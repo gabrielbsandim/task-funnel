@@ -351,6 +351,91 @@ try:
 finally:
     shutil.rmtree(root, ignore_errors=True)
 
+# 12. The callers a consequences lens is handed. The names used to come from added
+#     lines only, so a change inside an exported function's body (69 of 80 commits
+#     measured on a TypeScript repository), a removed export and a Python `def` all
+#     produced no name, and the plan said nobody calls them.
+root = tempfile.mkdtemp(prefix="kit-callers-")
+try:
+    cfg = {
+        "base": "main",
+        "slices": {"src": "origin/main...HEAD -- src", "all": "origin/main...HEAD"},
+        "lenses": {"consequences": {"slice": "src", "docs": [], "readsOutsideDiff": True,
+                                     "codeTargets": ["src", "app"]}},
+        "effort": {"standard": ["consequences"]},
+        "maxParallelAgents": 1,
+    }
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@t")
+    git(root, "config", "user.name", "t")
+    write(root, ".claude/funnel.config.json", json.dumps(cfg))
+    write(root, "src/money.ts", "export function parseBRL(text: string): number {\n"
+          "  const clean = text.trim();\n  return Number(clean.replace(',', '.'));\n}\n"
+          "export const oldName = 1;\n")
+    write(root, "app/invoice.ts", "import { parseBRL } from '../src/money';\nparseBRL('1');\n")
+    write(root, "app/legacy.ts", "import { oldName } from '../src/money';\n")
+    write(root, "src/fees.py", "def compute_fee(amount):\n    base = amount\n    return base\n")
+    write(root, "app/billing.py", "from src.fees import compute_fee\n")
+    for i in range(20):
+        write(root, f"app/noise{i}.ts", "const total = 1; // total\n")
+    write(root, "app/report.ts", "import { total } from '../src/sum';\nconsole.log(total);\n")
+    write(root, "src/sum.ts", "export const total = 2;\nexport function never() {}\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "base")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+    def callers(out):
+        at = out.find("callers outside the diff")
+        return out[at:] if at >= 0 else ""
+
+    write(root, "src/money.ts", "export function parseBRL(text: string): number {\n"
+          "  const clean = text.trim().replace(/\\./g, '');\n  return Number(clean.replace(',', '.'));\n}\n"
+          "export const oldName = 1;\n")
+    git(root, "commit", "-q", "-am", "body only")
+    out = run(root, "consequences")
+    check("12 a body-only change names its enclosing export", "app/invoice.ts" in callers(out), out)
+    base = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root, capture_output=True, text=True).stdout.strip()
+
+    git(root, "update-ref", "refs/remotes/origin/main", base)
+    write(root, "src/money.ts", "export function parseBRL(text: string): number {\n"
+          "  const clean = text.trim().replace(/\\./g, '');\n  return Number(clean.replace(',', '.'));\n}\n"
+          "export const newName = 1;\n")
+    git(root, "commit", "-q", "-am", "rename")
+    out = run(root, "consequences")
+    check("12 a renamed export still finds the caller of the old name", "app/legacy.ts" in callers(out), out)
+
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    write(root, "src/fees.py", "def compute_fee(amount):\n    base = amount * 2\n    return base\n")
+    git(root, "commit", "-q", "-am", "python body")
+    out = run(root, "consequences")
+    check("12 a Python def is a declaration too", "app/billing.py" in callers(out), out)
+
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    write(root, "src/sum.ts", "export const total = 3;\nexport function never() {}\n")
+    git(root, "commit", "-q", "-am", "common name")
+    out = run(root, "consequences")
+    check("12 a name in more than 15 files keeps the files importing its module",
+          "app/report.ts" in callers(out), out)
+    check("12 and drops the ones that only contain the word", "noise" not in callers(out), out)
+
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    write(root, "src/notes.txt", "free text\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "no declaration")
+    out = run(root, "consequences")
+    check("12 no name read is unknown, not a claim that nothing calls it",
+          "unknown: no declaration name" in callers(out) and "none matched" not in callers(out), out)
+
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    write(root, "src/lonely.ts", "export function lonelyThing() { return 1 }\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "uncalled")
+    out = run(root, "consequences")
+    check("12 names nobody calls are named, so the claim can be checked",
+          "none matched: nothing outside the diff references lonelyThing" in callers(out), out)
+finally:
+    shutil.rmtree(root, ignore_errors=True)
+
 print(f"{PASS} passed, {len(FAIL)} failed")
 for line in FAIL:
     print(f"  FAIL {line}")

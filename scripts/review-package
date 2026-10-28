@@ -27,6 +27,12 @@ CONFIG_DIR="$("$CFG" configdir)"
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
 
+# One vocabulary of declarations for every lens that extracts names from a diff, so
+# a language the claims lens reads (Python `def`, Go `func`) is not one the
+# consequences lens silently skips.
+DECL_TYPES='function|class|type|interface|enum|def|func'
+EXPORTED_DECL='export +(default +)?(async +)?(function\*?|const|let|class|type|interface|enum) +[A-Za-z_$][A-Za-z0-9_$]{3,}|^(async +)?def +[A-Za-z][A-Za-z0-9_]{3,}|^class +[A-Za-z][A-Za-z0-9_]{3,}|func +(\([^)]*\) *)?[A-Z][A-Za-z0-9_]{2,}'
+
 # A lens document may be as local as the config that names it, and an untracked file
 # is absent from every worktree. So it resolves against the checkout, then against
 # the checkout that owns the config, and prints absolute: the reviewer has no cwd to
@@ -87,14 +93,37 @@ write_slice() {
 # Prose that this change may have falsified. Candidates, not findings: the tokens
 # are declaration names and multi-digit literals from the changed lines, which is
 # how a comment keeps claiming 16 MB after the code moved to 1 MB.
-claims_candidates() {
-  local spec range tokens targets
+# The lines a change touched, both sides, plus the enclosing declaration git names in
+# each hunk header, with the diff markers stripped. A change inside a function body
+# leaves its name only in that header: measured on the last 80 commits of a
+# TypeScript repository, 69 changed an exported function without touching the line
+# that declares it.
+changed_lines() {
+  local spec range
   spec="$("$CFG" get '.slices.all')"
   range="$(slice_range "$spec")"
-  tokens="$( cd "$REPO_ROOT" && eval "git diff -U0 $range" \
-    | grep -E '^[+-]' | grep -Ev '^(\+\+\+|---)' \
-    | grep -oE '(function|const|let|class|type|interface|enum|def|func) +[A-Za-z_][A-Za-z0-9_]*|[0-9]{2,}' \
-    | awk '{print $NF}' | sort -u | grep -Ev '^(0+|1[0-9]{3}|20[0-9]{2})$' | head -40 )"
+  ( cd "$REPO_ROOT" && eval "git diff -U0 $range" ) | awk '
+    /^(\+\+\+|---) / { next }
+    /^@@/ { sub(/^@@[^@]*@@ ?/, ""); if (length($0)) print; next }
+    /^[+-]/ { print substr($0, 2) }'
+}
+
+# The declarations a change touches, exported ones first. Empty means no name could
+# be read, which is not the same answer as names nobody references.
+changed_names() {
+  local lines names
+  lines="$(changed_lines)"
+  names="$(printf '%s\n' "$lines" | grep -oE "$EXPORTED_DECL" | awk '{print $NF}' | sort -u | head -30 || true)"
+  [ -n "$names" ] || names="$(printf '%s\n' "$lines" \
+    | grep -oE "($DECL_TYPES) +[A-Za-z_][A-Za-z0-9_]{5,}" | awk '{print $NF}' | sort -u | head -30 || true)"
+  printf '%s' "$names"
+}
+
+claims_candidates() {
+  local tokens targets
+  tokens="$( changed_lines \
+    | grep -oE "(const|let|$DECL_TYPES) +[A-Za-z_][A-Za-z0-9_]*|[0-9]{2,}" \
+    | awk '{print $NF}' | sort -u | grep -Ev '^(0+|1[0-9]{3}|20[0-9]{2})$' | head -40 || true )"
   [ -n "$tokens" ] || return 0
   targets="$("$CFG" get '.lenses.claims.grepTargets[]?' | tr '\n' ' ')"
   [ -n "$targets" ] || return 0
@@ -233,31 +262,28 @@ reads_outside() {
 # So the permission is granted once, and paid for with grep instead of a sweep:
 # the declarations the diff added, resolved to the files outside the diff that
 # name them. A list of files, capped, not a codebase.
+#
+# Exported declarations first, and every local `const result` drops out with them.
+# Measured on the merge of pull request 880: the unfiltered form yielded 40 names,
+# of which `result`, `hours`, `rate` and `order` matched most of the repository and
+# ranked `prisma/schema.prisma` first; the exported form yielded 12, one of them
+# the `pickCostSnapshot` that was finding number two on that pull request.
 consumers_candidates() {
-  local spec range names changed targets excl
+  local spec range names changed targets excl importers
+  names="$1"
   spec="$("$CFG" get '.slices.all')"
   range="$(slice_range "$spec")"
   targets="$("$CFG" get '.lenses.consequences.codeTargets[]?' | tr '\n' ' ')"
   [ -n "${targets// /}" ] || return 0
   changed="$( cd "$REPO_ROOT" && eval "git diff --name-only $range" | sort -u )"
-  # Exported declarations only, and every local `const result` drops out with them.
-  # Measured on the merge of pull request 880: the unfiltered form yielded 40 names,
-  # of which `result`, `hours`, `rate` and `order` matched most of the repository and
-  # ranked `prisma/schema.prisma` first; the exported form yielded 12, one of them
-  # the `pickCostSnapshot` that was finding number two on that pull request.
-  names="$( cd "$REPO_ROOT" && eval "git diff -U0 $range" \
-    | grep -E '^\+' | grep -v '^+++' \
-    | grep -oE 'export +(default +)?(async +)?(function|const|class|type|interface|enum) +[A-Za-z_][A-Za-z0-9_]{3,}' \
-    | awk '{print $NF}' | sort -u | head -30 )"
-  # A change that exports nothing new still has callers, so fall back to every
-  # declaration rather than returning an empty list and reading as "no consumers".
-  if [ -z "$names" ]; then
-    names="$( cd "$REPO_ROOT" && eval "git diff -U0 $range" \
-      | grep -E '^\+' | grep -v '^+++' \
-      | grep -oE '(function|class|type|interface|enum) +[A-Za-z_][A-Za-z0-9_]{5,}' \
-      | awk '{print $NF}' | sort -u | head -30 )"
-  fi
-  [ -n "$names" ] || return 0
+  # The module names of the changed files, as an import would spell them, so a name
+  # too common to grep alone still resolves to the files that import its module.
+  importers="$(printf '%s\n' "$changed" | awk -F/ 'NF {
+      stem = $NF; sub(/\.[^.]*$/, "", stem)
+      if (stem == "index" || stem == "__init__") stem = (NF > 1) ? $(NF - 1) : ""
+      gsub(/\./, "\\.", stem)
+      if (length(stem) > 2) printf "%s%s", (n++ ? "|" : ""), stem }')"
+  [ -z "$importers" ] || importers="(from|require\(|import\(?) *['\"][^'\"]*\b($importers)(\.[a-z]+)?['\"]|^(from|import) +[A-Za-z0-9_.]*\b($importers)\b"
   excl="$(mktemp)"; printf '%s\n' "$changed" >"$excl"
   # `|| true` for the same reason claims_candidates has it: a declaration nothing
   # else references is the ordinary case, and under pipefail its grep would take
@@ -270,13 +296,33 @@ consumers_candidates() {
       | while IFS= read -r t; do
           [ -z "$t" ] && continue
           # A name matching half the repository is a word, not a reference, and it
-          # would spend the whole cap on files that merely contain it.
+          # would spend the whole cap on files that merely contain it, unless the file
+          # also imports the module that changed.
           hits="$(grep -rIlF --exclude-dir=node_modules -- "$t" $targets 2>/dev/null | sort -u || true)"
           count="$(printf '%s\n' "$hits" | grep -c . || true)"
-          [ "$count" -eq 0 ] || [ "$count" -gt 15 ] || printf '%s\n' "$hits"
+          if [ "$count" -gt 15 ] && [ -n "$importers" ]; then
+            hits="$(printf '%s\n' "$hits" | tr '\n' '\0' | xargs -0 -r grep -lE -- "$importers" 2>/dev/null || true)"
+            count=0
+          fi
+          [ "$count" -gt 15 ] || printf '%s\n' "$hits" | grep . || true
         done ) | grep -vxF -f "$excl" | sort | uniq -c | sort -rn | head -25 \
     | awk '{printf "%s   (%s of the changed names)\n", $2, $1}'
   rm -f "$excl"
+}
+
+# Three different answers that used to print as one: no name could be read from the
+# diff, so the callers are unknown; names were read and nothing outside the diff
+# references them; or the ranked list.
+print_consumers() {
+  local names c
+  names="$(changed_names)"
+  if [ -z "$names" ]; then
+    printf '%sunknown: no declaration name could be read from the diff, so grep for what it changed before calling it contained\n' "$1"
+    return 0
+  fi
+  c="$(consumers_candidates "$names")"
+  if [ -n "$c" ]; then printf '%s\n' "$c" | sed "s/^/$1/"; return 0; fi
+  printf '%snone matched: nothing outside the diff references %s\n' "$1" "$(printf '%s' "$names" | tr '\n' ' ' | sed 's/ $//')"
 }
 
 case "${1:-}" in
@@ -384,7 +430,8 @@ Run the gates on the fix and write one decision per finding still open."
     printf '\nsend    each block below verbatim, plus only this task'"'"'s half: what the\n'
     printf '        change is for, the acceptance criteria, and what was deliberately\n'
     printf '        left out. The agent already carries the reading discipline, the\n'
-    printf '        rubric, CONFIRMED against PLAUSIBLE and the return format.\n'
+    printf '        rubric, CONFIRMED against PLAUSIBLE and the return format. Never tell\n'
+    printf '        it what not to flag: it reports that instruction as a TRIPWIRE.\n'
     for s in $slices; do
       [ -z "$s" ] && continue
       n=$((n + 1))
@@ -459,8 +506,7 @@ Run the gates on the fix and write one decision per finding still open."
       printf '  touched by the diff, to be read whole and not as hunks:\n'
       changed_files "$l" | sed 's/^/    /'
       printf '  callers outside the diff (grep-precomputed, ranked):\n'
-      c="$(consumers_candidates)"
-      if [ -n "$c" ]; then printf '%s\n' "$c" | sed 's/^/    /'; else printf '    none matched: nothing outside the diff references what it exports\n'; fi
+      print_consumers '    '
     done
     printf '\n%s dispatch(es), max %s concurrent\n' "$n" "$("$CFG" get .maxParallelAgents)"
     ;;
@@ -491,8 +537,7 @@ Run the gates on the fix and write one decision per finding still open."
       changed_files "$lens" | sed 's/^/  /'
       printf 'callers outside the diff (grep-precomputed, ranked). Open these, and\n'
       printf 'nothing else outside the diff:\n'
-      c="$(consumers_candidates)"
-      if [ -n "$c" ]; then printf '%s\n' "$c" | sed 's/^/  /'; else printf '  none matched: nothing outside the diff references what it exports\n'; fi
+      print_consumers '  '
     fi
     ;;
 esac
