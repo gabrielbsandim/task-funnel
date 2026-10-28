@@ -124,6 +124,17 @@ jobs:
           pip install --quiet pyyaml
           python3 tests/check-eval-schema.py
 
+      - name: Every eval grader passes its good examples and fails its bad ones
+        run: |
+          pip install --quiet pyyaml
+          python3 tests/test-grader-examples.py
+
+      - name: Every skill survives the cut a compaction makes
+        run: python3 tests/test-skill-size.py
+
+      - name: The review agents keep what a dispatch cannot lower
+        run: python3 tests/test-review-contract.py
+
       - name: The Stop hook blocks an unverified edit and nothing else
         run: python3 tests/test-phase-gate.py
 

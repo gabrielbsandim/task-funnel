@@ -392,7 +392,7 @@ main, so no bot exception is needed.
 
 ```sh
 python3 tests/test-hooks.py            # 120 cases, half of them "must not block"
-python3 tests/test-screen-routes.py    # 15 cases: route groups, dynamic segments, the import walk, the preflight
+python3 tests/test-screen-routes.py    # 19 cases: route groups, dynamic segments, the import walk, the preflight, --check
 python3 tests/test-gate-jobs.py        # 14 cases: that concurrency happens, and that exclusive means alone
 python3 tests/test-gate-covers.py      # 10 cases: a covering pass proves the covered gate, never the reverse
 python3 tests/test-worktree-state.py   # 23 cases: what teardown will and will not delete
@@ -404,12 +404,15 @@ python3 tests/check-frontmatter.py     # every frontmatter block through a stric
 python3 tests/test-phase-gate.py       # 18 cases: 5 must block, 13 must not
 python3 tests/test-usage.py            # 41 cases: the lane split, counting a request once, the rate per version, the sum per branch
 python3 tests/test-new-code.py         # 34 cases: what a branch adds, never what it inherited
-python3 tests/test-review-package.py   # 52 cases: grouping, the lane, and the round cap refusing a new head
+python3 tests/test-review-package.py   # 59 cases: grouping, the lane, the round cap, and the callers a consequences lens is handed
 python3 tests/test-fan-out-routing.py  # 51 cases: the lane rules in the skill and the triage agent agree
 python3 tests/test-guards.py           # 57 cases, gate-env among them
 python3 tests/test-gate-receipt.py     # 10 cases: a code edit with no gate after it, and everything it must ignore
 python3 tests/test-escapes.py          # 12 cases: hot files, exclusions, reverts, lanes, the eval skeleton
-python3 tests/test-eval-delta.py       # 5 cases: pooled runs, the delta, the floor
+python3 tests/test-eval-delta.py       # 9 cases: pooled runs, the delta, the floor, the bootstrap interval
+python3 tests/test-grader-examples.py  # every deterministic grader against its good and bad examples
+python3 tests/test-skill-size.py       # every SKILL.md under the 20,000 a compaction keeps, and what moved out
+python3 tests/test-review-contract.py  # SPEC-MANDATED, TRIPWIRE and the screen lens probes, end to end in the prose
 claude plugin validate . --strict      # manifests, skills, agents, commands
 npx agnix@0.49.0 .                     # the external spec linter, configured by .agnix.toml
 ```

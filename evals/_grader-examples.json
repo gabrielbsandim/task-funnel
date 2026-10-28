@@ -1,0 +1,736 @@
+{
+  "runs-repo-gates": [
+    {
+      "why": "one gate by path",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "sh ci/lint.sh"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the loop the 2026-10-20 runs used",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "for g in lint types test; do sh ci/$g.sh || exit 1; done"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the glob loop the bare model used",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "for s in ci/*.sh; do sh \"$s\"; done"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "kit on PATH",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "kit gate ship"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "kit through a quoted variable",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "K=\"${CLAUDE_PLUGIN_ROOT}/scripts/kit\"; \"$K\" gate ship"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "kit by its quoted absolute path",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "\"/home/u/.claude/plugins/cache/x/task-funnel/0.19.0/scripts/kit\" gate implement_first_pass"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "reading a gate is not running it",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "ci/lint.sh"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "a bare test runner is not the repo's gate",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "npx vitest run"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "listing the gates is not running them",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "kit config gates ship"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "task-fired": [
+    {
+      "why": "the plugin-qualified skill",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "task-funnel:task",
+            "args": "fix"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the bare name",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "task"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "another skill whose name ends in task",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "my-subtask"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "investigate",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "task-funnel:investigate"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "fires-task-skill": "task-fired",
+  "does-not-fire-task": [
+    {
+      "why": "investigate only",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "task-funnel:investigate"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the task skill fired",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "task-funnel:task"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "fires-investigate": [
+    {
+      "why": "the plugin-qualified skill",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "task-funnel:investigate"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the task skill instead",
+      "calls": [
+        [
+          "Skill",
+          {
+            "skill": "task-funnel:task"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "no-test-writer": [
+    {
+      "why": "a reviewer only",
+      "calls": [
+        [
+          "Agent",
+          {
+            "subagent_type": "task-funnel:funnel-reviewer",
+            "prompt": "x"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the test writer",
+      "calls": [
+        [
+          "Agent",
+          {
+            "subagent_type": "task-funnel:funnel-test-writer",
+            "prompt": "x"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "no-funnel-agents": [
+    {
+      "why": "no agent at all",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "sh ci/lint.sh"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "an explore agent is not a funnel stage",
+      "calls": [
+        [
+          "Agent",
+          {
+            "subagent_type": "Explore",
+            "prompt": "find messages"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a review round",
+      "calls": [
+        [
+          "Agent",
+          {
+            "subagent_type": "task-funnel:funnel-reviewer",
+            "prompt": "x"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "no-issue-created": [
+    {
+      "why": "nothing on the tracker",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "sh ci/test.sh"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "reading an issue is not creating one",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "gh api repos/o/r/issues/12 --jq .title"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the overlap check before creating",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "kit issues related \"long text\" --files src/messages.ts"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "gh issue create",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "gh issue create --title x --body y"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "created through the API",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "gh api repos/o/r/issues -f title=x -f body=y"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "branches-off-trunk": [
+    {
+      "why": "switch -c",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "git switch -c fix/copy"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the worktree",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "kit worktree add 12 copy --kind chore"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "asking which branch is not making one",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "git branch --show-current"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "no-push": [
+    {
+      "why": "the gate and a stop",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "sh ci/lint.sh"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a push",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "git push -u origin feat/observacao"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "wrote-the-function": [
+    {
+      "why": "the new file",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/texto.ts",
+            "content": "export function x() {}"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "another file",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/medicao.ts",
+            "content": "x"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "no-edit": [
+    {
+      "why": "reads only",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "src/money.ts"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "an edit",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "src/money.ts",
+            "old_string": "a",
+            "new_string": "b"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "does-not-edit-first": "no-edit",
+  "no-edit-before-spec": [
+    {
+      "why": "a spec file outside src",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/docs/spec.md",
+            "old_string": "a",
+            "new_string": "b"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the money module",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/money.ts",
+            "old_string": "a",
+            "new_string": "b"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "no-write-to-src": [
+    {
+      "why": "a spec under docs",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/docs/spec.md",
+            "content": "x"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "code under src",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/aprovacao.ts",
+            "content": "x"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "changed-the-string": [
+    {
+      "why": "the Edit tool",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/messages.ts",
+            "old_string": "maior",
+            "new_string": "acima"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "sed, as the e2e run did",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "sed -i 's/maior que o permitido/acima do limite permitido/' src/messages.ts"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "reading the file is not changing it",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/messages.ts"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "grepping it is not changing it",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "grep -n permitido src/messages.ts"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "wrote-format": [
+    {
+      "why": "the new file",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "export function formatBRL(value: number): string {\n  return value.toLocaleString(\"pt-BR\", { style: \"currency\", currency: \"BRL\" });\n}\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the helper written somewhere else",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/utils.ts",
+            "content": "export function formatBRL(value: number): string {\n  return value.toLocaleString(\"pt-BR\", { style: \"currency\", currency: \"BRL\" });\n}\n"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "uses-the-platform": [
+    {
+      "why": "toLocaleString",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "export function formatBRL(value: number): string {\n  return value.toLocaleString(\"pt-BR\", { style: \"currency\", currency: \"BRL\" });\n}\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "Intl.NumberFormat",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "const f = new Intl.NumberFormat(\"pt-BR\", { style: \"currency\", currency: \"BRL\" });\nexport const formatBRL = (v: number) => f.format(v);\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a hand-rolled separator loop",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "export function formatBRL(value: number): string {\n  const step0 = 0;\n  const step1 = 1;\n  const step2 = 2;\n  const step3 = 3;\n  const step4 = 4;\n  const step5 = 5;\n  const step6 = 6;\n  const step7 = 7;\n  const step8 = 8;\n  const step9 = 9;\n  const step10 = 10;\n  const step11 = 11;\n  const step12 = 12;\n  const step13 = 13;\n  const step14 = 14;\n  const step15 = 15;\n  const step16 = 16;\n  const step17 = 17;\n  const step18 = 18;\n  const step19 = 19;\n  const step20 = 20;\n  const step21 = 21;\n  const step22 = 22;\n  const step23 = 23;\n  const step24 = 24;\n  const step25 = 25;\n  const step26 = 26;\n  const step27 = 27;\n  const step28 = 28;\n  const step29 = 29;\n  return \"R$ \" + value;\n}\n"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "Intl used in another file",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "export function formatBRL(value: number): string {\n  const step0 = 0;\n  const step1 = 1;\n  const step2 = 2;\n  const step3 = 3;\n  const step4 = 4;\n  const step5 = 5;\n  const step6 = 6;\n  const step7 = 7;\n  const step8 = 8;\n  const step9 = 9;\n  const step10 = 10;\n  const step11 = 11;\n  const step12 = 12;\n  const step13 = 13;\n  const step14 = 14;\n  const step15 = 15;\n  const step16 = 16;\n  const step17 = 17;\n  const step18 = 18;\n  const step19 = 19;\n  const step20 = 20;\n  const step21 = 21;\n  const step22 = 22;\n  const step23 = 23;\n  const step24 = 24;\n  const step25 = 25;\n  const step26 = 26;\n  const step27 = 27;\n  const step28 = 28;\n  const step29 = 29;\n  return \"R$ \" + value;\n}\n"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/other.ts",
+            "content": "export function formatBRL(value: number): string {\n  return value.toLocaleString(\"pt-BR\", { style: \"currency\", currency: \"BRL\" });\n}\n"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "small-file": [
+    {
+      "why": "three lines",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "export function formatBRL(value: number): string {\n  return value.toLocaleString(\"pt-BR\", { style: \"currency\", currency: \"BRL\" });\n}\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a file with escaped quotes inside",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "export const q = \"\\\"\";\nexport const b = '\\\\n';\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "thirty-odd lines",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format.ts",
+            "content": "export function formatBRL(value: number): string {\n  const step0 = 0;\n  const step1 = 1;\n  const step2 = 2;\n  const step3 = 3;\n  const step4 = 4;\n  const step5 = 5;\n  const step6 = 6;\n  const step7 = 7;\n  const step8 = 8;\n  const step9 = 9;\n  const step10 = 10;\n  const step11 = 11;\n  const step12 = 12;\n  const step13 = 13;\n  const step14 = 14;\n  const step15 = 15;\n  const step16 = 16;\n  const step17 = 17;\n  const step18 = 18;\n  const step19 = 19;\n  const step20 = 20;\n  const step21 = 21;\n  const step22 = 22;\n  const step23 = 23;\n  const step24 = 24;\n  const step25 = 25;\n  const step26 = 26;\n  const step27 = 27;\n  const step28 = 28;\n  const step29 = 29;\n  return \"R$ \" + value;\n}\n"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "premise-checked": [
+    {
+      "why": "triage dispatched",
+      "calls": [
+        [
+          "Agent",
+          {
+            "subagent_type": "task-funnel:funnel-triage",
+            "prompt": "premise"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "straight to the edit",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/money.ts",
+            "old_string": "a",
+            "new_string": "b"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ]
+}

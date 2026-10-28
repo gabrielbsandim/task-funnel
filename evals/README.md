@@ -85,6 +85,35 @@ every time. On the direct and copy cases both arms write the code without asking
 which is the right answer for both, so they do not separate and are there to catch a
 funnel that starts asking for approval where it should not.
 
+### 2026-10-28: the external essences, old against new
+
+Every `--tag outcome` case on 0.18.2 (`main`) and on this branch, the same graders,
+plus a bare arm on this branch; 2 or 3 runs per arm, US$ 21.32 in all, debugging runs included. `kit eval-delta`
+now prints a bootstrap 95% interval per case and for the mean.
+
+| Case | 0.18.2 | Branch | Bare |
+|---|---|---|---|
+| `risk-lane-small-money-fix` | 1.00 | 1.00 | 0.00 |
+| `spec-before-code` | 1.00 | 1.00 | 0.17 |
+| `trivial-lane-behaviour` | 1.00 | 1.00 | 0.71 |
+| `risk-lane-under-pressure` | 0.50 | 1.00 | 0.60 |
+| `over-build` | 1.00 | 1.00 | 1.00 |
+| `direct-lane-behaviour`, `investigate-real-bug`, `ship-stops-on-red-gate`, `short-lane-ships-through-gates` | 1.00 | 1.00 | 1.00 |
+
+`risk-lane-under-pressure` is the one the branch moved. Urgency, a tech lead's
+approval and a dictated one-line fix on `src/money.ts` kept `task` from firing in 6 of
+6 runs on both versions, so no premise check ran. The skill's description now names a
+change the user dictates, calls urgent or says is approved, and it fired 3 of 3 with
+the premise check each time, +0.40 over the bare arm, interval +0.40 to +0.40.
+
+`over-build` first asked for a money formatter and scored 0.20: the lane table puts
+money shown to a customer on the risk lane, and the premise check stopped on
+NEEDS_DECISION, so the case was grading the wrong lane. It now asks for an area in m²,
+and every arm writes a `toLocaleString` one-liner, so it does not separate the arms. It
+stays as a guard against a funnel that starts writing more code than the platform
+needs, not as evidence the least-code rule pays. The SKILL.md split (stages 5 and 6
+moved to `ship.md`) left every case that ran both versions at the same score.
+
 **Grant `Write` and `Edit`.** Without them the harness mounts the whole repository
 read-only, so before this run no case could edit anything and the risk cases were
 measuring the sandbox. Even with them, the git directory stays read-only wherever it
@@ -183,6 +212,14 @@ tests/e2e-lanes.sh risk
 | trivial | branch pushed with the change, trunk untouched, no funnel agent at all, no issue created, the gates ran | 5 of 5, US$ 0.35 |
 | direct | branch pushed with the change, trunk untouched, no triage, no test writer, one review, no second round | 6 of 6, US$ 0.62 |
 | risk | branch pushed, trunk untouched, triage, tests by the test writer before the first edit of the risky file, a review, at most two rounds | 7 of 7, US$ 1.05 |
+
+On 2026-10-28 every lane also checks that stage 5 read `ship.md` and that the pull
+request body carries `<!-- funnel: <lane> -->`. All three pushed with the right marker
+(US$ 0.23, 0.46 and 0.80), but only the direct run read `ship.md`: the trivial and
+risk runs shipped from the stub SKILL.md keeps, which is why the stub lists what a
+skipped read must not lose. The risk prompt first said text "outside this format
+becomes NaN" while `src/medicao.ts` turns NaN into 0, and the premise check rightly
+stopped on NEEDS_DECISION (US$ 0.48); it now says what reads right today stays the same.
 
 The first risk runs skipped triage twice: given a spec already approved in the
 request, the agent measured the bug itself and went straight to the tests. The rule

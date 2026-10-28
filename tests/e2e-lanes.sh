@@ -16,10 +16,12 @@ check() {
   fail=1
 }
 
-# One line per event, in order: AGENT <type>, WRITE <path>, BASH <command>, OUT <tool output line>.
+# One line per event, in order: AGENT <type>, WRITE <path>, READ <path>, MARK <lane>, BASH <command>,
+# OUT <tool output line>.
 events() {
   python3 - "$1" <<'PY'
-import json, sys
+import json, re, sys
+mark = re.compile(r"<!--\s*funnel:\s*(trivial|direct|risk)\s*-->")
 for raw in open(sys.argv[1], encoding="utf8"):
     try:
         event = json.loads(raw)
@@ -33,6 +35,11 @@ for raw in open(sys.argv[1], encoding="utf8"):
             print("AGENT", (data.get("subagent_type") or "").split(":")[-1])
         if kind == "tool_use" and block.get("name") in ("Edit", "Write"):
             print("WRITE", data.get("file_path", ""))
+        if kind == "tool_use" and block.get("name") == "Read":
+            print("READ", data.get("file_path", ""))
+        if kind == "tool_use":
+            for lane in mark.findall(json.dumps(data, ensure_ascii=False)):
+                print("MARK", lane)
         if kind == "tool_use" and block.get("name") == "Bash":
             print("BASH", " ".join(data.get("command", "").split()))
         if kind == "tool_result":
@@ -50,13 +57,21 @@ run_lane() {
   mkdir "$root/cwd"
   (cd "$root/cwd" && bash "$PLUGIN/evals/_fixture/build.sh" >/dev/null)
   printf '\n== %s lane, in %s\n' "$lane" "$root"
-  (cd "$root/cwd" && claude -p "$prompt" --plugin-dir "$PLUGIN" --setting-sources project,local \
+  # Only this plugin: no user settings, plugins, MCP servers, CLAUDE.md or memory, so a
+  # rule the run follows is a rule this plugin wrote.
+  (cd "$root/cwd" && CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 CLAUDE_CODE_DISABLE_AUTO_MEMORY=1 \
+    claude -p "$prompt" --plugin-dir "$PLUGIN" --setting-sources project,local --strict-mcp-config \
     --permission-mode bypassPermissions --output-format stream-json --verbose \
     --max-budget-usd "${E2E_BUDGET:-4}") > "$root/trace.jsonl" 2>&1
   events "$root/trace.jsonl" > "$root/events.txt"
   ROOT="$root" EV="$root/events.txt"
   BRANCH="$(git -C "$root/remote.git" for-each-ref refs/heads --format='%(refname:short)' | grep -vx trunk | head -1)"
   printf 'trace %s/trace.jsonl, pushed branch: %s\n' "$root" "${BRANCH:-none}"
+}
+
+shipped() {
+  check "stage 5 read ship.md" 'grep -qE "^(READ|BASH) .*skills/task/ship\.md" "$EV"'
+  check "the pull request body carries <!-- funnel: $1 -->" "grep -qx 'MARK $1' \"\$EV\""
 }
 
 agents() { grep -c "^AGENT $1\$" "$EV"; }
@@ -71,6 +86,7 @@ for lane in $LANES; do
       check "no funnel agent at all (triage, test writer, reviewer, verifier)" '! grep -qE "^AGENT funnel-(triage|test-writer|reviewer|verifier)$" "$EV"'
       check "no issue was created" '! grep -qE "^BASH .*(issue create|/issues)" "$EV"'
       check "the gates ran" 'grep -qE "^BASH .*(ci/(lint|types|test)\.sh|kit\"? gate)" "$EV"'
+      shipped trivial
       ;;
     direct)
       run_lane direct 'A observacao da medicao precisa ser cortada em 500 caracteres, com "..." no fim quando cortar. Cria uma funcao para isso em src/texto.ts e abre a PR. Commit e push estao autorizados, nao precisa me perguntar.'
@@ -80,9 +96,10 @@ for lane in $LANES; do
       check "no funnel-test-writer on the direct lane" '[ "$(agents funnel-test-writer)" = 0 ]'
       check "one review ran (funnel-reviewer dispatched)" '[ "$(agents funnel-reviewer)" -ge 1 ]'
       check "kit review never opened a second round" '! grep -qE "^OUT .*round 2 of" "$EV"'
+      shipped direct
       ;;
     risk)
-      run_lane risk 'O parseBRL quebra com separador de milhar: "12.500,00" nao vira 12500. Corrige. A spec ja esta aprovada: "12.500,00" vira 12500, "850,00" vira 850, "1.234.567,89" vira 1234567.89, texto fora desse formato vira NaN, e src/medicao.ts nao muda. Pode seguir ate a PR sem me perguntar; commit e push estao autorizados.'
+      run_lane risk 'O parseBRL quebra com separador de milhar: "12.500,00" nao vira 12500. Corrige. A spec ja esta aprovada: "12.500,00" vira 12500, "850,00" vira 850, "1.234.567,89" vira 1234567.89, tudo o que hoje ja e lido certo continua igual, e src/medicao.ts nao muda. Pode seguir ate a PR sem me perguntar; commit e push estao autorizados.'
       check "a branch off trunk was pushed with src/money.ts" 'pushed_touches src/money.ts'
       check "trunk on the remote is untouched" '[ "$(git -C "$ROOT/remote.git" rev-list --count trunk)" = 1 ]'
       check "the premise check ran (funnel-triage)" '[ "$(agents funnel-triage)" -ge 1 ]'
@@ -90,6 +107,7 @@ for lane in $LANES; do
       check "the tests came before any edit to src/money.ts" 'grep -nE "^(AGENT funnel-test-writer|WRITE .*src/money\.ts)" "$EV" | head -1 | grep -q funnel-test-writer'
       check "a review ran (funnel-reviewer dispatched)" '[ "$(agents funnel-reviewer)" -ge 1 ]'
       check "kit review never opened a third round" '! grep -qE "^OUT .*round 3 of" "$EV"'
+      shipped risk
       ;;
     *) echo "unknown lane: $lane"; exit 2 ;;
   esac

@@ -10,14 +10,46 @@ as a plugin that works. Measured on this plugin's first recorded runs: 4 of 7 ca
 scored exactly the same with and without it. The number that says whether the
 plugin earns its tokens is the delta beside the cost of each arm, which is this table.
 Run the suite with `--ablation with-without`, or there is no second arm to read.
+
+Each delta carries a 95% bootstrap interval, because with two to four runs per arm
+a delta of +0.25 can be one run's grader call. The interval for one case resamples
+its runs within each arm; the one for the mean resamples cases, then runs inside
+each. An interval that crosses zero is a delta this suite cannot tell from noise.
 """
 import json
+import random
 import sys
 from collections import defaultdict
+
+DRAWS = 2000
 
 
 def runs(arm):
     return [r for r in arm or [] if r.get("error") is None]
+
+
+def scores(xs):
+    return [x.get("score") or 0 for x in xs]
+
+
+def draw(rng, values):
+    return sum(rng.choice(values) for _ in values) / len(values)
+
+
+def interval(samples):
+    samples = sorted(samples)
+    return samples[int(0.025 * len(samples))], samples[int(0.975 * len(samples)) - 1]
+
+
+def case_interval(rng, w, wo):
+    return interval([draw(rng, w) - draw(rng, wo) for _ in range(DRAWS)])
+
+
+def mean_interval(rng, cases):
+    def one():
+        picked = [rng.choice(cases) for _ in cases]
+        return sum(draw(rng, w) - draw(rng, wo) for w, wo in picked) / len(picked)
+    return interval([one() for _ in range(DRAWS)])
 
 
 def main(argv):
@@ -39,8 +71,9 @@ def main(argv):
         values = [x.get(key) or 0 for x in xs]
         return sum(values) / len(values) if values else None
 
-    print(f"{'case':<34} {'with':>5} {'w/o':>5} {'delta':>6} {'US$ with':>9} {'US$ w/o':>8}  runs")
-    deltas = []
+    rng = random.Random(0)
+    print(f"{'case':<34} {'with':>5} {'w/o':>5} {'delta':>6} {'95% CI':>14} {'US$ with':>9} {'US$ w/o':>8}  runs")
+    deltas, complete = [], []
     for name in sorted(pooled):
         arms = pooled[name]
         w, wo = mean(arms["with"], "score"), mean(arms["without"], "score")
@@ -48,13 +81,20 @@ def main(argv):
             print(f"{name:<34} {'':>5} {'':>5} {'n/a':>6}  one arm has no completed run")
             continue
         deltas.append(w - wo)
-        print(f"{name:<34} {w:>5.2f} {wo:>5.2f} {w - wo:>+6.2f} {mean(arms['with'], 'costUsd'):>9.2f} "
+        complete.append((scores(arms["with"]), scores(arms["without"])))
+        lo, hi = case_interval(rng, *complete[-1])
+        print(f"{name:<34} {w:>5.2f} {wo:>5.2f} {w - wo:>+6.2f} {f'[{lo:+.2f},{hi:+.2f}]':>14} "
+              f"{mean(arms['with'], 'costUsd'):>9.2f} "
               f"{mean(arms['without'], 'costUsd'):>8.2f}  {len(arms['with'])}/{len(arms['without'])}")
     if not deltas:
         return 1
     avg = sum(deltas) / len(deltas)
     separating = sum(1 for d in deltas if abs(d) >= 0.1)
-    print(f"\nmean delta {avg:+.2f}; {separating} of {len(deltas)} case(s) separate the arms by 0.10 or more")
+    lo, hi = mean_interval(rng, complete)
+    print(f"\nmean delta {avg:+.2f}, 95% CI {lo:+.2f} to {hi:+.2f}; "
+          f"{separating} of {len(deltas)} case(s) separate the arms by 0.10 or more")
+    if lo <= 0 <= hi:
+        print("the interval crosses zero: over these cases the mean is noise; read each case's own interval")
     if floor is not None and avg < floor:
         return 3
     return 0

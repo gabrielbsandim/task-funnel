@@ -45,6 +45,21 @@ try:
     none = subprocess.run([SCRIPT, c], capture_output=True, text=True)
     check("a run with no without arm is refused by name", none.returncode != 0 and "ablation" in none.stderr,
           none.stderr)
+    # The interval. Two runs per arm cannot tell +0.25 from noise, twelve can tell
+    # +0.5 from zero, and a suite whose every case ties has an interval of zero.
+    noisy = run_file([("noisy", [1, 0.5], [0.5, 0.5]), ("tie", [1, 1], [1, 1])])
+    steady = run_file([(f"c{i}", [1] * 6, [0.5] * 6) for i in range(4)] + [("d", [1, 0] * 3, [0] * 6)])
+    try:
+        out = subprocess.run([SCRIPT, noisy], capture_output=True, text=True).stdout
+        check("every row carries an interval", "[" in next(l for l in out.splitlines() if l.startswith("noisy")), out)
+        check("a delta two runs cannot separate crosses zero", "crosses zero" in out, out)
+        out = subprocess.run([SCRIPT, steady], capture_output=True, text=True).stdout
+        check("a delta every run agrees on does not", "crosses zero" not in out and "95% CI +" in out, out)
+        out2 = subprocess.run([SCRIPT, steady], capture_output=True, text=True).stdout
+        check("the interval is the same on every call", out == out2, out2)
+    finally:
+        os.unlink(noisy)
+        os.unlink(steady)
 finally:
     for path in (a, b, c):
         os.unlink(path)
