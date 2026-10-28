@@ -94,6 +94,13 @@ with tempfile.TemporaryDirectory() as repo:
         ("npx vitest run src/a.test.ts", PASS),
         ("cat tsconfig.json", PASS),
         ("git status", PASS),
+        # Only what the shell runs counts: a message or a heredoc naming the tool is prose.
+        ('git commit -m "make tsc pass"', PASS),
+        ("git commit -F - <<'EOF'\nfix: tsc errors\nEOF", PASS),
+        ('NODE_OPTIONS="--max-old-space-size=6144" npx tsc --noEmit', PASS),
+        ('git commit -m "wip" && npx tsc --noEmit', BLOCK),
+        ('echo "run kit gate" && npx tsc --noEmit', BLOCK),
+        ('bash -c "npx tsc --noEmit"', BLOCK),
     ]:
         equivalent(f"gate-env: {cmd[:52]}", "gate-env.py", {**bash(cmd), "cwd": repo}, want)
     equivalent("gate-env: a repo without config constrains nothing", "gate-env.py",
@@ -134,6 +141,17 @@ for cmd, want in [
     ("git status", PASS),
     ("git log --oneline -5", PASS),
     ("npm test", PASS),
+    # A commit message that names a flag does not pass it. graphify #3121, here a block.
+    (f'git commit -m "make {NV} unnecessary"', PASS),
+    (f'git commit -m "feat: support the {SHORT_N} dry run flag"', PASS),
+    (f"git commit -F - <<'EOF'\nfix: stop needing {NV}\nEOF", PASS),
+    ('git commit -m "docs: never push --force"', PASS),
+    # What a shell does run from inside a string still counts.
+    (f'git push "{NV}"', BLOCK),
+    (f'bash -c "git push {NV}"', BLOCK),
+    (f'echo "$(git push {NV})"', BLOCK),
+    (f"bash <<'EOF'\ngit push {NV}\nEOF", BLOCK),
+    (f'git commit -m "wip" && git push {NV}', BLOCK),
 ]:
     equivalent(f"protect-tests: {cmd[:52]}", "protect-tests.py", bash(cmd), want)
 

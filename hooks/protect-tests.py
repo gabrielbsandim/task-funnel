@@ -24,6 +24,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import kit_paths  # noqa: E402  (needs the path above; the hook runs as a script)
+from shell_text import executed  # noqa: E402
 
 TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec)/|\.(test|spec)\.[jt]sx?$|_test\.(py|go)$|test_[^/]+\.py$")
 
@@ -102,7 +103,7 @@ def check(payload: dict) -> int:
     args = payload.get("tool_input") or {}
 
     if tool == "Bash":
-        cmd = args.get("command") or ""
+        cmd = executed(args.get("command") or "")
         if NO_VERIFY.search(cmd):
             return block(
                 "Blocked: --no-verify. The pre-push hook runs the checks that keep the branch\n"

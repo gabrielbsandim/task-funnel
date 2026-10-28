@@ -17,6 +17,9 @@ import os
 import re
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from shell_text import executed  # noqa: E402
+
 ASSIGN = re.compile(r"^\s*((?:[A-Z_][A-Z0-9_]*=\S+\s+)+)(.*)$")
 RUNNERS = {"npx", "pnpm", "yarn", "bunx", "exec", "--no-install", "--yes", "-y", "dlx"}
 
@@ -62,15 +65,16 @@ def constrained(gate_cmd: str):
 
 def check(payload: dict) -> int:
     cmd = (payload.get("tool_input") or {}).get("command") or ""
-    if not cmd or re.search(r"\bkit\s+gate\b", cmd):
+    run = executed(cmd)
+    if not run or re.search(r"\bkit\s+gate\b", run):
         return 0
     for name, gate in gates(payload.get("cwd") or os.getcwd()).items():
         found = constrained((gate or {}).get("cmd"))
         if not found:
             continue
         assigns, tool = found
-        runs_tool = re.search(r"(?:^|[\s;&|(/])" + re.escape(tool) + r"(?:\s|$)", cmd)
-        if not runs_tool or all(a in cmd for a in assigns):
+        runs_tool = re.search(r"(?:^|[\s;&|(/])" + re.escape(tool) + r"(?:\s|$)", run)
+        if not runs_tool or all(a in run for a in assigns):
             continue
         sys.stderr.write(
             f"Blocked: this repository's `{name}` gate runs {tool} with {' '.join(assigns)},\n"
