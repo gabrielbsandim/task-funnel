@@ -18,7 +18,8 @@ sample does not count as shared. And tests, documentation and migrations move wi
 every fix by design, so they are excluded unless `--exclude` replaces the list.
 
 The lane comes from the marker the task skill writes into the body at ship time,
-`<!-- funnel: direct -->` or `<!-- funnel: risk -->`. A pull request without one is
+`<!-- funnel: direct -->`, `<!-- funnel: risk -->` or `<!-- funnel: trivial -->`. A pull
+request without one is
 `none`: work that did not go through the funnel, which is the comparison that says
 whether the funnel is paying.
 """
@@ -35,7 +36,7 @@ FIELDS = "number,title,mergedAt,headRefName,body,files,url"
 DEFAULT_EXCLUDE = ["*test*", "*spec*", "docs/*", "*.md", "*/migrations/*", "prisma/*",
                    "*lock.json", "*.lock", "*lock.yaml", "CHANGELOG*"]
 FIX = re.compile(r"^(fix|hotfix|revert)\b", re.I)
-LANE = re.compile(r"<!--\s*funnel:\s*(direct|risk)\s*-->")
+LANE = re.compile(r"<!--\s*funnel:\s*(trivial|direct|risk)\s*-->")
 
 
 def arg(argv, name, default=None):
@@ -121,7 +122,7 @@ def report(prs, escapes, hot_files, as_json):
                           "escapes": rows, "hotFiles": sorted(hot_files)}, indent=2))
         return 0
     print(f"{'lane':<8} {'PRs':>5} {'escaped':>8} {'rate':>6}")
-    for key in ("direct", "risk", "none"):
+    for key in ("trivial", "direct", "risk", "none"):
         n, e = by_lane.get(key, (0, 0))
         if n:
             print(f"{key:<8} {n:>5} {e:>8} {e / n:>6.0%}")

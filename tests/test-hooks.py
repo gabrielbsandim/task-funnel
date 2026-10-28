@@ -312,6 +312,41 @@ with tempfile.TemporaryDirectory() as tmp:
     ]:
         check(f"pr-body-gate: {name}", run("pr-body-gate.py", payload), want)
 
+# The lane marker. A session that ran the task skill must mark its body, because
+# an unmarked pull request is counted as off the funnel; a session that never ran
+# the skill is never asked, or the off-funnel side of that comparison gets a marker.
+print("\n== pr-body-gate, the lane marker")
+with tempfile.TemporaryDirectory() as tmp:
+    funnel_run = os.path.join(tmp, "funnel.jsonl")
+    with open(funnel_run, "w", encoding="utf8") as fh:
+        fh.write(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "task-funnel:task", "args": "fix"}}]}}) + "\n")
+    slash_run = os.path.join(tmp, "slash.jsonl")
+    with open(slash_run, "w", encoding="utf8") as fh:
+        fh.write(json.dumps({"type": "user", "message": {"content": "<command-name>/task-funnel:task</command-name>"}}) + "\n")
+    plain_run = os.path.join(tmp, "plain.jsonl")
+    with open(plain_run, "w", encoding="utf8") as fh:
+        fh.write(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "name": "Skill", "input": {"skill": "task-funnel:investigate"}}]}}) + "\n")
+    unmarked = "Fecha #1. O botao passa a dizer Salvar."
+    marked = unmarked + " <!-- funnel: direct -->"
+
+    def pr(body, transcript, verb="create"):
+        return {**bash(f"gh pr {verb} --body '{body}'"), "transcript_path": transcript}
+
+    for name, payload, want in [
+        ("a funnel run with no marker", pr(unmarked, funnel_run), BLOCK),
+        ("a funnel run started by the slash command", pr(unmarked, slash_run), BLOCK),
+        ("a funnel run that marked its lane", pr(marked, funnel_run), PASS),
+        ("the trivial lane marks itself too", pr(unmarked + " <!-- funnel: trivial -->", funnel_run), PASS),
+        ("an edit that drops the marker", pr(unmarked, funnel_run, "edit 7"), BLOCK),
+        ("a session that never ran the skill is not asked", pr(unmarked, plain_run), PASS),
+        ("no transcript fails open", bash(f"gh pr create --body '{unmarked}'"), PASS),
+        ("a transcript that is gone fails open", pr(unmarked, os.path.join(tmp, "gone.jsonl")), PASS),
+        ("a comment carries no marker", {**bash(f"gh pr comment 5 --body '{unmarked}'"), "transcript_path": funnel_run}, PASS),
+    ]:
+        check(f"pr-body-gate: {name}", run("pr-body-gate.py", payload), want)
+
 print()
 if failures:
     print(f"{len(failures)} falha(s): {', '.join(failures)}")

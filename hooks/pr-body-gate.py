@@ -28,6 +28,11 @@ a top-level pull request comment is refused outright unless the command carries
 text, and a comment is where the overflow went the moment the body was measured.
 Budgets come from the repo config's `prBody`, and the environment still wins.
 
+A body written by a session that ran the task skill must end with the
+lane marker, `<!-- funnel: direct -->` and its siblings, because `kit escapes` reads
+an unmarked pull request as work done off the funnel. A session that never ran the
+skill is not asked for one, so the off-funnel side of that comparison stays honest.
+
 Exit 2 blocks and returns stderr to the model as a correction.
 """
 
@@ -54,6 +59,8 @@ SEPARATORS = {"|", "||", "&&", ";", "&"}
 VALUED = {"-H", "--header", "-q", "--jq", "-t", "--template", "-p", "--preview",
           "--hostname", "--cache"}
 DEFAULTS = {"max": 2000, "sectionMax": 600, "commentMax": 1000}
+LANE_MARK = re.compile(r"<!--\s*funnel:\s*(trivial|direct|risk)\s*-->")
+TASK_SKILL = re.compile(r'"skill"\s*:\s*"(?:[\w-]+:)?task"|<command-name>/?(?:[\w-]+:)?task</command-name>')
 
 
 def load_pr_body():
@@ -183,6 +190,17 @@ def classify(payload):
     return None
 
 
+def ran_task_skill(transcript):
+    """True when this session invoked the task skill. Unreadable means no."""
+    if not transcript or not os.path.isfile(transcript):
+        return False
+    try:
+        with open(transcript, encoding="utf-8", errors="replace") as handle:
+            return any(TASK_SKILL.search(line) for line in handle)
+    except OSError:
+        return False
+
+
 def settings(cwd):
     """The repo config, merged, or {} when it cannot be read. Read only once a call
     has already matched, so the ordinary Bash call never pays for it."""
@@ -226,6 +244,13 @@ def check(payload: dict) -> int:
         return 2
     if text is None:
         return 0
+    if kind == "body" and not LANE_MARK.search(text) and ran_task_skill(payload.get("transcript_path")):
+        sys.stderr.write(
+            "Blocked: this session ran the task skill, so the pull request body ends with the\n"
+            "lane marker, `<!-- funnel: direct -->`, `<!-- funnel: risk -->` or\n"
+            "`<!-- funnel: trivial -->`. `kit lane` prints the lane. Without it `kit escapes`\n"
+            "counts this pull request as work done off the funnel.\n")
+        return 2
     try:
         pr_body = load_pr_body()
         m = pr_body.measure(text, pr_body.find_template(None) if kind == "body" else None)
