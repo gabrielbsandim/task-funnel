@@ -1,6 +1,6 @@
 ---
 name: task
-description: "Delivery funnel for one repository task: a feature, bug fix, refactor or chore, from description or issue number to a pushed branch and a draft pull request with the board moved. Use whenever the user asks, in any language, to implement, fix, build, change or refactor something in this repository, including requests like \"fix this and leave it ready for a PR\", \"open a pull request for\", or a bare issue number, and on /task <description | issue number>. Not for questions about why something happens: that is investigate. Every path, gate command and board id comes from .claude/funnel.config.json, so this runs on any stack."
+description: "Delivery funnel for one repository task: a feature, bug fix, refactor or chore, from description or issue number to a pushed branch and a draft pull request with the board moved. Use whenever the user asks, in any language, to implement, fix, build, change or refactor something in this repository, including requests like \"fix this and leave it ready for a PR\", \"open a pull request for\", or a bare issue number, and a one-line change the user dictates, calls urgent or says is already approved, and on /task <description | issue number>. Not for questions about why something happens: that is investigate. Every path, gate command and board id comes from .claude/funnel.config.json, so this runs on any stack."
 ---
 
 # task: one task, from description to draft pull request
@@ -13,8 +13,8 @@ what you wrote.
 Input: the task description or issue number after the command. Empty → ask which
 task and stop.
 
-Two files sit next to this one and are **not** loaded with it. `review.md` is stage 4
-in full, and stage 4 says to read it before dispatching. `evidence.md` is the
+Three files sit next to this one and are **not** loaded with it. `review.md` is stage
+4 in full and `ship.md` is stages 5 and 6, each read when its stage starts. `evidence.md` is the
 measurement behind every rule here that reads as arbitrary; open it when you are about
 to disagree with a rule or adapt the funnel to a repository it was not written
 against, never to run a task.
@@ -32,12 +32,9 @@ kit lane src/billing/fee.ts    # direct or risk, from the repo's risk.paths
 kit review                     # the review plan for this branch's lane
 ```
 
-If `kit` is not on PATH, or cannot run (a sandbox that hides the directory its link
-points into), use the copy shipped beside this skill for the whole task:
-`${CLAUDE_PLUGIN_ROOT}/scripts/kit`. Write that absolute path wherever this skill, its
-reference files or an agent's dispatch says `kit`, because a Bash call does not keep
-an alias. `/task-funnel:setup` puts `kit` on PATH for later sessions. If the repo has
-no config, `kit config init` writes a starting one and `kit config check` validates it.
+If `kit` is not on PATH or cannot run, use `${CLAUDE_PLUGIN_ROOT}/scripts/kit` for the
+whole task, written as that absolute path wherever a file or a dispatch says `kit`,
+because a Bash call keeps no alias. No config: `kit config init`, then `kit config check`.
 
 ## Before stage 0: is this skill the one that shipped
 
@@ -45,13 +42,10 @@ no config, `kit config init` writes a starting one and `kit config check` valida
 kit version 0.18.2
 ```
 
-The literal is the version this file shipped in, so the command compares the text you
-are reading against what is installed (`evidence.md` &middot; *Stale kit*).
+The literal is the version this file shipped in (`evidence.md` &middot; *Stale kit*).
 
-- **STALE SKILL**: the caller declares a version newer than anything installed, so
-  this skill was loaded from a directory (a plugin under development, or an eval)
-  and the `kit` on PATH belongs to an older copy. Use
-  `${CLAUDE_PLUGIN_ROOT}/scripts/kit` for the whole task, as above, and carry on.
+- **STALE SKILL**: this skill was loaded from a directory newer than the installed
+  `kit`. Use `${CLAUDE_PLUGIN_ROOT}/scripts/kit` for the whole task and carry on.
 - **STALE KIT**: run the `kit setup` line it prints, then carry on.
 - **`unknown subcommand: version`**: the `kit` on PATH is older than 0.3.0. `kit setup`
   from the newest installed copy fixes it:
@@ -82,9 +76,8 @@ are reading against what is installed (`evidence.md` &middot; *Stale kit*).
 - **An inherited claim is not a fact.** A triage finding carried into the spec is
   marked **MEASURED**, with the command that proved it, or **INFERRED**, and whoever
   writes an INFERRED claim into code measures it first.
-- **Everything the funnel writes is English**, whatever language the conversation is
-  in: branch, commits, pull request, code, comments, dispatch labels. Talk to the user
-  in their language.
+- **Everything the funnel writes is English**: branch, commits, pull request, code,
+  comments, dispatches. Talk to the user in their language.
 - **A code comment says why, in at most two lines.** No ticket key, pull request
   number, date or count.
 - **A new issue is the last resort, and never an orphan.** Before creating one, run
@@ -96,10 +89,8 @@ are reading against what is installed (`evidence.md` &middot; *Stale kit*).
   report, say `/clear` is the next step.
 - **Compact at a boundary, by prefix size, and always before a long pause.**
   `kit context` prints **HOLD** below 120k tokens in context, **AT THE NEXT BOUNDARY**
-  from 120k to 300k, **NOW** above 300k, and **LATE** below 15% of the window free. The
-  end of a unit of work is the trigger, and a large prefix before a pause is the one
-  place a single request costs five dollars (`evidence.md` &middot; *Prefix rewrite*,
-  *Why the bands are token counts*, *A pause is the expensive moment*).
+  from 120k to 300k, **NOW** above 300k, and **LATE** below 15% of the window free
+  (`evidence.md` &middot; *Prefix rewrite*, *A pause is the expensive moment*).
 
 ## Stage 0 · Pre-flight and the lane, read-only
 
@@ -142,13 +133,10 @@ After code exists, `kit lane` with no argument reads the branch's own diff.
 
 **Announce and proceed, without waiting.** Say in one line which lane and which
 surface decided it, then run it. The user chose announce-and-proceed on 2026-08-18,
-over announce-and-confirm, so a confirmation round here is the cost that decision
-rejected. Naming the criterion is what makes it arguable: the user can stop you
-before anything is written.
+over announce-and-confirm; naming the criterion is what lets them stop you.
 
-**Uncertainty goes up, never down.** If the table is arguable, take the higher lane.
-Escalating late costs the minutes already spent; a risky change on the direct lane
-ships a defect with a green report attached. Triage may raise a direct task to risk
+**Uncertainty goes up, never down.** If the table is arguable, take the higher lane:
+a risky change on the direct lane ships a defect with a green report. Triage may raise a direct task to risk
 (the user says so, or the premise check finds a surface you missed); nothing lowers a
 risk task except the triage verdict `DIRECT_LANE`.
 
@@ -175,14 +163,12 @@ because a typo that opens an issue is backlog growth nobody decided on.
 
 ### A repo on the lite lane
 
-`kit config get .lane` printing `lite` means the repo chose one reviewer and one round
-for every task. Run the direct lane, and on a risky path `kit review` adds the risk
-lenses to that one round instead of buying a second.
+`kit config get .lane` printing `lite`: run the direct lane for every task; on a risky
+path `kit review` adds the risk lenses to its one round.
 
 ## The agents this skill dispatches
 
-Each dispatch names its agent, because a generic "dispatch a reviewer" resolves to a
-general-purpose agent and the standing instructions in these files are lost:
+Each dispatch names its agent, or it resolves to a general-purpose one without them:
 
 | Stage | Agent | Model | Lane | Carries |
 | --- | --- | --- | --- | --- |
@@ -192,9 +178,8 @@ general-purpose agent and the standing instructions in these files are lost:
 | 4 | `task-funnel:funnel-verifier` | sonnet | direct, risk | refute each finding, and REAL only with a trace or a reproduction |
 | 4 | `task-funnel:funnel-screen-lens` | inherit | risk, when a screen moved | report only what you observed, and NOT PROVEN is not a pass |
 
-There is no implementer agent. It was removed in 0.18.0: half of what it cost went to
-fix rounds re-reading a repository the session already had in context
-(`evidence.md` &middot; *The funnel, measured over five weeks*).
+There is no implementer agent since 0.18.0 (`evidence.md` &middot; *The funnel,
+measured over five weeks*).
 
 ## Stage 1 · The spec
 
@@ -222,11 +207,9 @@ whether the code is what the request assumes. The gate reads `VERDICT` first:
   the alternatives are objective.
 - `ALREADY_DONE` → stop and show the commit or the code.
 
-`NEEDS_DECISION` answered by an investigation → **stage 1 does not run again.** The
-child issue the investigation produced arrives with measured scope and criteria, which
-is more than triage returns; write the spec from the investigation and go to stage 2.
-Run stage 0 against the child's number, because a branch may exist for it
-(`evidence.md` &middot; *Paying triage twice*).
+`NEEDS_DECISION` answered by an investigation → **stage 1 does not run again**: write
+the spec from the investigation's child issue, run stage 0 against its number, and go
+to stage 2 (`evidence.md` &middot; *Paying triage twice*).
 
 `PROCEED` with no issue yet → open one the way the pipeline document says, and re-run
 the stage 0 pre-flight against its number.
@@ -237,12 +220,12 @@ On the run this funnel was first measured on, three of four review rounds went t
 rule nobody had written down (`evidence.md` &middot; *One invariant, found three
 times*). So the spec names them up front, on every lane:
 
-| Scope in the spec     | The invariant it carries                                                                                                              |
+| Scope in the spec | The invariant it carries |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| **Money**             | every path that spends records the spend, **including the one that throws**; a cap sums an aggregate, never a rounded per-row value    |
-| **External call**     | every new call has a timeout and a `catch`; the `catch` logs what was lost, because a silent `return { status: 'failed' }` is no handler |
-| **Untrusted inbound** | the response code is chosen for the sender, not for us; a path that always answers 200 must not be the path that swallows a retry      |
-| **Prose it touches**  | any comment, document or knowledge entry the change **falsifies** moves in the same commit, not only the ones it adds                  |
+| **Money** | every path that spends records the spend, **including the one that throws**; a cap sums an aggregate, never a rounded per-row value |
+| **External call** | every new call has a timeout and a `catch`; the `catch` logs what was lost, because a silent `return { status: 'failed' }` is no handler |
+| **Untrusted inbound** | the response code is chosen for the sender, not for us; a path that always answers 200 must not be the path that swallows a retry |
+| **Prose it touches** | any comment, document or knowledge entry the change **falsifies** moves in the same commit, not only the ones it adds |
 
 Too big for one reviewable pull request → present the slices and stop.
 
@@ -266,15 +249,12 @@ kit worktree add <issue> <slug> --kind <feature|bug|refactor|chore>
 kit board in_progress --issue <issue>
 ```
 
-The board move belongs here, right after the worktree exists: the first instant at
-which there is work another cycle must not pick up.
+The board moves right after the worktree exists, so no other cycle picks the work up.
 
 **A refused git step is reported, never inferred.** Run `kit worktree add` even when a
-probe says git is read-only, because its own error is the evidence the report needs. If
-it, or a plain `git switch -c`, is refused, the change is still written in the checkout
-with the Edit tool (a sandbox can refuse a shell write and allow Edit, so a failed
-`touch` proves nothing about Edit), the stage's gates still run, nothing is committed
-to trunk, and the report names each refused step with its error.
+probe says git is read-only. If it, or `git switch -c`, is refused, still write the
+change with the Edit tool (a failed `touch` proves nothing about Edit), run the gates,
+commit nothing to trunk, and name each refused step with its error in the report.
 
 **Risk lane: the tests come first.** Dispatch the spec, including its INTERFACE line,
 to `funnel-test-writer`, working in the worktree. It writes the tests from the
@@ -284,17 +264,24 @@ acceptance criteria and the invariants, runs them, and commits them failing.
 the value, or the missing export the INTERFACE declares). A test that passes before the
 code exists asserts nothing about the change; send it back once, with the test named.
 
-A test written after the code tests the code that was written. One written from the
-spec tests what was asked for, and the independence is measured: tests from an agent
-that never saw the code were correct 88% of the time, against 61% for the agent
-testing its own (`evidence.md` &middot; *Tests before the code*).
+Tests from an agent that never saw the code were correct 88% of the time, against 61%
+for the agent testing its own (`evidence.md` &middot; *Tests before the code*).
 
 **Direct lane**: you write the tests, and for a bug the reproduction comes first:
 write it, watch it fail, then fix.
 
 ## Stage 3 · Implement, in this session
 
-Write the change in the worktree, against the spec. On the risk lane, the goal is the
+Write the change in the worktree, against the spec.
+
+**The least code that fully meets the spec.** Having read the code the change touches,
+take the first option that holds: nothing needs to change; it already exists in this
+repo; the standard library or the platform does it; an installed dependency does it;
+only then the smallest new code, with its test. Every added line is read by every
+reviewer (`evidence.md` &middot; *Less code to read*). Never smaller than the spec: no
+criterion or invariant is cut to save lines.
+
+On the risk lane, the goal is the
 test writer's tests passing **without editing them**: a test that looks wrong is a
 spec question, raised with the user, not an edit. The `protect-tests` hook refuses the
 usual ways a suite gets faked.
@@ -319,98 +306,40 @@ kit review --since <sha>         # risk lane only: the fix round
 
 `kit review` decides the lane from `risk.paths` and prints `lane, round N of M`;
 `kit review risk` or `kit review direct` passes on a lane triage or the user decided.
-**The cap is counted, not remembered**: a branch gets one round on the direct lane and
-two on the risk lane, and a further `kit review` on a new head is refused. Two pull
-requests once ran 21 and 25 rounds under a written cap of 2 and cost 14% of everything
-the funnel spent in five weeks (`evidence.md` &middot; *Rounds without a counter*).
-Only the user buys another round, with `--reset-rounds`.
+**The cap is counted, not remembered**: one round on the direct lane, two on the risk
+lane, and a further `kit review` on a new head is refused (`evidence.md` &middot;
+*Rounds without a counter*). Only the user buys another round, with `--reset-rounds`.
 
 ### Before the dispatches go out
 
 Read `review.md` in this skill's directory now. What a skipped read must not lose:
 
-- **Give each printed block verbatim to its own `funnel-reviewer`**, plus only this
-  task's half: what the change is for, the acceptance criteria, what was deliberately
-  left out, and from round 2 the `ALREADY DECIDED` list. The agent already carries the
-  reading discipline, the rubric and the return shape.
-- **The browser half runs only on the risk lane, when `kit screens` returns a route
-  and `kit screens --preflight` prints `ready`.** Exactly one screen lens at a time, and
-  you bring the app up, because the lens has no `Bash`. A preflight blocker is named in
-  the report, never worked around inside the lens.
-- **Every finding goes to `funnel-verifier` before it costs anything.** One dispatch
-  per round, all of that round's findings in it, the worktree path and the diff files.
-  Only REAL findings are fixed. REFUTED is dropped. PRE-EXISTING goes to the body as
-  one line, after `kit issues related`.
-- **REAL findings are fixed in this session, all of them, in one pass**, then
-  `kit gate implement_fix_round` and one commit. They are not deferred: a verified
-  defect in this change is this change's work.
-- **The direct lane stops there.** The fix ships on its gates. **The risk lane** runs
-  `kit review --since <the sha round 1 reviewed>` once: the reviewer gets the fix diff
-  and the round 1 findings, answers ADDRESSED or NOT ADDRESSED, and reports only new
-  Critical or Important breakage inside the fix. Its findings go through the verifier
-  the same way.
-- **At the cap every open finding gets a written decision** in the pull request body.
-  Silent discard is prohibited, and a round whose fix is larger than the original
-  commit is the spec having been wrong: say so and stop.
+- **Each printed block goes verbatim to its own `funnel-reviewer`**, plus what the
+  change is for, the acceptance criteria, what was left out, and from round 2 the
+  `ALREADY DECIDED` list. Never an instruction about what not to flag.
+- **The browser half runs only on the risk lane, when `kit screens --preflight` prints
+  `ready`**, one screen lens at a time, with the app brought up by you.
+- **Every finding goes to `funnel-verifier`**, one dispatch per round. REAL is fixed,
+  REFUTED dropped, PRE-EXISTING goes to the body as one line.
+- **REAL findings are fixed in this session, all in one pass**, then
+  `kit gate implement_fix_round` and one commit.
+- **The direct lane stops there.** The risk lane runs `kit review --since <the sha
+  round 1 reviewed>` once, through the verifier the same way.
+- **At the cap every open finding gets a written decision** in the body; a fix larger
+  than the original commit is the spec having been wrong: say so and stop.
 
-## Stage 5 · Ship
+## Stages 5 and 6 · Ship and report
 
-1. `kit gate ship`. Gates whose receipt already covers this exact tree are skipped and
-   say so. The tree SHA includes untracked files, so any edit invalidates the receipt.
-2. Push. The fix for a red pre-push hook is the failing check, never `--no-verify`.
-3. Open the pull request exactly as the pipeline document says: base, draft state and
-   issue reference are its decisions. Fill the repo's template honestly.
+**Read `ship.md` in this skill's directory now.** What a skipped read must not lose:
 
-   **The body has a budget, and it is checked.** Write it to a file and run
-   `kit pr-body <file>` before `gh pr create`: at most **2000 characters of prose** and
-   **600 per section**, not counting the template, tables, checkboxes or fenced blocks.
-   Cut, do not relocate (`evidence.md` &middot; *A body that competes with the diff*).
-
-   The body carries, and nothing else: what changed and why, in the template's own
-   sections; what to check; the findings table, one row per finding that reached the
-   verifier, which costs no prose; what is knowingly left out and who owns it; and on
-   its last line the lane marker, `<!-- funnel: direct -->` or `<!-- funnel: risk -->`,
-   which is how `kit escapes` later tells the lanes apart.
-
-   There is no separate findings comment. The table is in the body, and a comment
-   answering a person's question in review goes through `kit ledger`, which measures
-   it on a comment's budget.
-4. `kit board in_review --issue <issue>`, after the pull request URL exists.
-5. Never `done`. The tracker's own automation owns that column.
-6. `kit worktree gc --yes`, not `rm`. The pull request is open at exactly this head and
-   everything is pushed, which is the definition of finished (`evidence.md` &middot;
-   *The worktree leak*).
-
-## Stage 6 · Report
-
-**Six items, hard cap, at most 600 characters of prose in total.** Anything that does
-not fit goes in the pull request body's budget or nowhere (`evidence.md` &middot; *Why
-the budget is in characters*).
-
-1. The pull request link, its draft state and base, the issue it closes, and the lane.
-2. What changed, in one sentence naming the class of defect, not each instance.
-3. Gates: the count that ran, failed and was skipped by receipt, and the tree SHA.
-4. Review: rounds used of the lane's cap, findings by severity, how many the verifier
-   refuted.
-5. What was left out, and the issue that owns it. If this run created issues, the count
-   and the parent each one hangs under.
-6. What needs the user, or "nothing". On the risk lane, `/clear` before the next task.
-
-Then `kit context`, and say the verdict in item 6 when it is anything but HOLD.
-
-A gate that stopped the funnel replaces line 1 and is named without varnish. A number
-with no command behind it is not a number. Never declare done without lines 3 and 4.
-
-## How to know the funnel is paying
-
-```
-kit escapes                     # merged pull requests a later fix corrected, by lane and month
-kit usage --all --by-stage      # what each stage cost, per run
-kit eval-delta evals/results/*.json   # what the plugin changes against the bare model
-```
-
-The funnel's claim is fewer escapes on the risk lane than off the funnel, at a cost
-per task the direct lane keeps close to working without it. Each escape `kit escapes`
-finds becomes an eval case with `kit escapes --case <n> --out evals`, so the suite
-grows from the defects that actually shipped (`evidence.md` &middot; *Measuring
-escapes*).
+- `kit gate ship`, then push. The fix for a red pre-push hook is the failing check,
+  never `--no-verify`.
+- The body is written to a file and checked with `kit pr-body <file>` before
+  `gh pr create`: at most **2000 characters of prose** and **600 per section**. Cut,
+  do not relocate. Its last line is the lane marker, `<!-- funnel: direct -->`,
+  `<!-- funnel: risk -->` or `<!-- funnel: trivial -->`; a hook refuses a body
+  without it.
+- `kit board in_review --issue <issue>` after the URL exists, never `done`, then
+  `kit worktree gc --yes`.
+- The report is six items in at most 600 characters of prose, then `kit context`.
+  Never declare done without the gate count and the review rounds.

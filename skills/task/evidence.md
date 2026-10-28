@@ -522,3 +522,28 @@ plugin changes against the bare model on that case. On the first recorded runs t
 mean delta was +0.08, and 4 of 7 cases scored the same with and without the plugin,
 which is why the suite is meant to grow from real escapes rather than from cases the
 model already passes alone.
+
+## A skill cut at compaction
+
+After a compaction Claude Code re-attaches each invoked skill cut at 20,000
+characters, and whatever falls past the cut is gone for the rest of the session
+(reported upstream in obra/superpowers #2481, where a five-round limit past the cut
+became 18 fix rounds). `SKILL.md` here was 24,059 characters, so the cut landed in
+stage 4, on "`kit gate implement_fix_round` and one commit", and stages 5 and 6 were
+lost. The funnel compacts 5.5 times per session against 0.6 without it (*The funnel,
+measured over five weeks*), so this was the common case, not the edge. Stages 5 and 6
+moved to `ship.md`, read when stage 5 starts, and `tests/test-skill-size.py` fails
+when any `SKILL.md` reaches 20,000 bytes.
+
+## Less code to read
+
+Every line the session adds is read by every reviewer lens and then by the verifier,
+and the reviewers are most of what a risk task costs after the main loop (*The funnel,
+measured over five weeks*). The ladder in stage 3 comes from ponytail, whose agentic
+benchmark (2026-10-07, Opus 5.5, 39 tasks, 5 runs each, headless Claude Code against
+no skill) measured 53% fewer lines, 95% interval 41 to 63, and 26% lower cost, with
+hidden checks passing at 97% against 96%. Their per-task tables put the gain in
+open-scope and feature work and near zero on surgical fixes, which is most of what
+the risk lane carries, so the rung's value here is unmeasured until `evals/over-build`
+separates the arms. Its last clause is the funnel's own: the spec is never cut to
+save lines, because a missing criterion is the defect review exists to catch.
