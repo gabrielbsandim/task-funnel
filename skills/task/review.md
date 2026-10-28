@@ -33,6 +33,12 @@ findings numbered in the order they came back. Nothing else: it has its own
 instructions. A finding the reviewer itself tagged `PRE-EXISTING` skips the verifier,
 since it costs no round either way.
 
+A REAL finding tagged `SPEC-MANDATED` is the spec being wrong, not the code: it is
+not fixed against the spec, it goes to the user with the evidence, and the body
+records the decision. A reviewer line starting `TRIPWIRE:` means a dispatch told a
+reviewer what not to report: say so in the report, and never write that instruction
+again. The task's half of a dispatch states scope, not exemptions.
+
 **REAL findings are fixed, all of them, in one pass**, then
 `kit gate implement_fix_round` and one commit. Not deferred: a verified defect in this
 change is this change's work, and a deferral is a second pull request that reloads
@@ -76,6 +82,7 @@ review has a browser half that runs alongside the diff dispatches.
 kit screens             # the routes, and the ones it could not resolve
 kit screens --json      # the same, to paste into the dispatch
 kit screens --preflight # whether the browser half can run at all, and why not
+kit screens --check F   # whether every artifact the lens's return in F cites exists
 ```
 
 `kit screens` walks the import graph from each changed file up to the router entry
@@ -111,6 +118,11 @@ corrupt each other's reads (`evidence.md` &middot; *One browser, one tab*).
 - **Credentials by environment variable name only.** `funnel-config check` refuses a
   value in `browser.auth`, and the agent cannot read a secret the dispatch did not
   already hand it.
+
+- **Its return is checked before it is believed.** Save it to a file and run
+  `kit screens --check <file>`: every screenshot and snapshot it cites must be on
+  disk and be what its name says. A `MISSING` artifact makes what rests on it NOT
+  PROVEN, and a PROVEN that cites nothing is NOT PROVEN.
 
 A finding from the lens goes through the verifier like any other. A browser is the
 most nondeterministic thing in this funnel, so it never becomes a gate.

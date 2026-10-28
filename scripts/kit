@@ -9,6 +9,7 @@
 #   kit review [direct|risk]   the grouped review dispatch plan, capped per lane
 #   kit screens [--preflight]  routes the changed screens are reachable at, or whether
 #                              a browser lens can run here at all
+#   kit screens --check F      whether the artifacts a screen lens return cites exist
 #   kit board <status> --issue N
 #   kit issues related <text>  what is already on the board that overlaps this
 #   kit issues orphans         open issues that are neither an epic nor a child

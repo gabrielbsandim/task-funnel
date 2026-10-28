@@ -108,6 +108,66 @@ Two things this probe has already taught, so do not relearn them:
   gave a `clientWidth` of 375. Report the measured number, because a finding at a
   width you did not render at is a finding nobody can reproduce.
 
+### The legibility probe, so "hard to read" is a number
+
+Run this once per route at the smallest viewport, after the layout probe. It
+returns elements and numbers, which is what a finding needs.
+
+```js
+() => {
+  const rgba = c => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null
+    const p = m[1].split(/[\s,\/]+/).filter(Boolean).map(Number); return [p[0], p[1], p[2], p.length > 3 ? p[3] : 1] }
+  const over = (top, under) => [0, 1, 2].map(i => top[i] * top[3] + under[i] * (1 - top[3])).concat(1)
+  const lum = c => c.slice(0, 3).map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4 })
+    .reduce((s, v, i) => s + v * [0.2126, 0.7152, 0.0722][i], 0)
+  const ratio = (a, b) => { const [x, y] = [lum(a), lum(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05) }
+  const name = e => e.tagName.toLowerCase() + (e.id ? '#' + e.id : '.' + (e.className || '').toString().split(' ')[0]) +
+    ' "' + (e.textContent || '').trim().slice(0, 30) + '"'
+  const backdrop = e => { const chain = []; for (let n = e; n; n = n.parentElement) chain.unshift(n)
+    let bg = [255, 255, 255, 1], image = false
+    for (const n of chain) { const s = getComputedStyle(n), c = rgba(s.backgroundColor)
+      if (c && c[3] > 0) { bg = over(c, bg); if (c[3] === 1) image = false }
+      if (s.backgroundImage !== 'none') image = true }
+    return { bg, image } }
+  const texts = [...document.querySelectorAll('body *')].filter(e => {
+    const r = e.getBoundingClientRect(), s = getComputedStyle(e)
+    return r.width && r.height && s.visibility !== 'hidden' &&
+      [...e.childNodes].some(n => n.nodeType === 3 && n.textContent.trim()) })
+  const low = [], near = [], unmeasured = [], tiny = [], clipped = []
+  for (const e of texts) { const s = getComputedStyle(e), size = parseFloat(s.fontSize)
+    const large = size >= 24 || (size >= 18.66 && parseInt(s.fontWeight) >= 700), bar = large ? 3 : 4.5
+    const { bg, image } = backdrop(e), fg = rgba(s.color)
+    if (size < 12) tiny.push(name(e) + ' ' + size + 'px')
+    if (e.scrollWidth > e.clientWidth + 1 && /hidden|clip/.test(s.overflowX))
+      clipped.push(name(e) + (s.textOverflow === 'ellipsis' ? ' (ellipsis)' : ''))
+    if (image) { unmeasured.push(name(e)); continue }
+    const r = ratio(over(fg, bg), bg)
+    if (r < bar) low.push(name(e) + ' ' + r.toFixed(2) + ':1, needs ' + bar)
+    else if (r < bar + 0.5) near.push(name(e) + ' ' + r.toFixed(2) + ':1') }
+  let last = 0; const skipped = []
+  for (const h of document.querySelectorAll('h1, h2, h3, h4, h5, h6')) { const n = +h.tagName[1]
+    if (last && n > last + 1) skipped.push('h' + last + ' -> ' + name(h)); last = n }
+  const broken = [...document.images].filter(i => i.complete && i.getAttribute('src') && !i.naturalWidth).map(i => i.getAttribute('src'))
+  const cap = xs => ({ count: xs.length, first: [...new Set(xs)].slice(0, 12) })
+  return { lowContrast: cap(low), nearTheBar: cap(near), overAnImage: cap(unmeasured), tinyText: cap(tiny),
+           clipped: cap(clipped), skippedHeadings: cap(skipped), brokenImages: cap(broken) }
+}
+```
+
+How to read it, because each list has a way to be misread:
+
+- **The bar is 4.5:1, and 3:1 for large text, unless this repo's documents set
+  another.** Colors are composited through every transparent layer down to the
+  page, so a `rgba` grey on a tinted card is measured as it renders.
+- **`nearTheBar` is not a finding.** It is within 0.5 of the bar, worth one line
+  in the return so the next change does not tip it over, and nothing else.
+- **`overAnImage` is not a pass.** Text over a gradient or a picture has no single
+  background to measure. Look at it in the screenshot and report it only when you
+  can name where it cannot be read.
+- **`clipped` with `(ellipsis)` is usually deliberate.** It is a finding when the
+  cut text is the thing the user needs, a name or an amount, and nothing else
+  shows it whole.
+
 ### The rest of part 2
 
 - **The states a screen has, not just the one it loads in.** Empty, loading, error
@@ -120,9 +180,8 @@ Two things this probe has already taught, so do not relearn them:
   not happen are all findings.
 - **Keyboard and focus.** Tab to the primary control. Invisible focus, or a modal
   you cannot leave with Escape, is Important.
-- **Contrast and hierarchy.** Read computed colors with `browser_evaluate` rather
-  than judging a screenshot: a ratio you measured is a finding, a ratio you
-  eyeballed is an argument. Check heading order while you are there.
+- **Contrast and hierarchy** come from the legibility probe: a ratio it measured
+  is a finding, a ratio you eyeballed is an argument.
 - **The words.** Copy in the language and register the rest of the app uses, a
   control that says what it does, an error that says how to fix it rather than
   apologising, and a label naming what the user recognises rather than an internal

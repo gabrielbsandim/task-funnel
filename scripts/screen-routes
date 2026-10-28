@@ -5,6 +5,7 @@
     screen-routes --json     the same, for a dispatch to consume
     screen-routes --base X   override the base ref
     screen-routes --preflight  can a browser lens run here at all, before one is sent
+    screen-routes --check F    does every artifact the lens's return in file F cites exist
 
 The browser lens needs URLs, and the diff only has file paths. Guessing the URL
 in the dispatch prompt is how a lens ends up proving the wrong screen, or the
@@ -268,8 +269,50 @@ def port_owner(port):
                 return None
     return None
 
+ARTIFACT = re.compile(r"[\w./~-]+\.(?:png|jpe?g|webp|yml|yaml)\b")
+IMAGE_MAGIC = (b"\x89PNG", b"\xff\xd8\xff", b"RIFF")
+
+
+def check_artifacts(report_path, roots):
+    """Exit 0 when every artifact the lens cites is on disk, 3 otherwise.
+
+    A screen lens that says PROVEN carries the authority of having looked, and its
+    screenshots are the only part of that a person can check. A path that is not on
+    disk, or an image that is not an image, means the claim was written without it.
+    """
+    try:
+        text = open(report_path, encoding="utf-8").read()
+    except OSError as err:
+        print(f"cannot read {report_path}: {err}", file=sys.stderr)
+        return 2
+    cited = sorted(set(ARTIFACT.findall(text)))
+    missing = []
+    for path in cited:
+        found = next((c for c in [os.path.expanduser(path)] + [os.path.join(r, path) for r in roots]
+                      if os.path.isfile(c) and os.path.getsize(c) > 0), None)
+        image = path.rsplit(".", 1)[-1] in ("png", "jpg", "jpeg", "webp")
+        if found and image and not open(found, "rb").read(4).startswith(IMAGE_MAGIC):
+            found = None
+        print(f"{'ok     ' if found else 'MISSING'} {path}")
+        if not found:
+            missing.append(path)
+    if not cited:
+        print("NO ARTIFACTS: the return cites no screenshot or snapshot, so nothing it says was seen can be checked")
+        return 3
+    if missing:
+        print(f"{len(missing)} of {len(cited)} cited artifact(s) missing: what rests on them is NOT PROVEN")
+        return 3
+    print(f"{len(cited)} cited artifact(s) on disk")
+    return 0
+
+
 def main():
     argv = sys.argv[1:]
+    if "--check" in argv:
+        report = argv[argv.index("--check") + 1] if argv.index("--check") + 1 < len(argv) else ""
+        top = subprocess.run(["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True)
+        here = top.stdout.strip() if top.returncode == 0 else os.getcwd()
+        sys.exit(check_artifacts(report, [here, os.path.join(here, ".playwright-mcp"), os.getcwd()]))
     as_json = "--json" in argv
     base_override = None
     if "--base" in argv:

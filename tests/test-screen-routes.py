@@ -157,6 +157,7 @@ def main():
         shutil.rmtree(root, ignore_errors=True)
 
     preflight_cases()
+    check_cases()
     print("\n%d passed, %d failed" % (PASS, FAIL))
     return 1 if FAIL else 0
 
@@ -217,6 +218,36 @@ def preflight_cases():
             server.wait()
         shutil.rmtree(root, ignore_errors=True)
         shutil.rmtree(other, ignore_errors=True)
+
+
+def check_cases():
+    """`--check`: every artifact the lens's return cites is on disk and is what it says."""
+    root = tempfile.mkdtemp(prefix="kit-check-")
+    try:
+        os.makedirs(os.path.join(root, ".playwright-mcp"))
+        with open(os.path.join(root, ".playwright-mcp", "medicao-375.png"), "wb") as fh:
+            fh.write(b"\x89PNG\r\n\x1a\n" + b"0" * 64)
+        with open(os.path.join(root, "fake.png"), "w") as fh:
+            fh.write("not an image")
+
+        def chk(text):
+            report = os.path.join(root, "return.md")
+            with open(report, "w") as fh:
+                fh.write(text)
+            out = subprocess.run([sys.executable, SCRIPT, "--check", report], cwd=root,
+                                 capture_output=True, text=True)
+            return out.returncode, out.stdout
+
+        code, out = chk("PROVEN\n/medicao at 375: medicao-375.png\n")
+        check("check: a cited screenshot on disk passes", code, 0)
+        code, out = chk("PROVEN\n/medicao at 375: medicao-375.png, /lista at 375: lista-375.png\n")
+        check("check: a cited screenshot that is not there fails", (code, "MISSING lista-375.png" in out), (3, True))
+        code, out = chk("PROVEN\nevery route looked fine\n")
+        check("check: a PROVEN that cites nothing fails", (code, "NO ARTIFACTS" in out), (3, True))
+        code, out = chk("PROVEN\nsee fake.png\n")
+        check("check: a .png that is not an image fails", code, 3)
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
 
 
 if __name__ == "__main__":

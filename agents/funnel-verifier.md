@@ -30,6 +30,11 @@ So the default, whenever you cannot trace it, is REFUTED.
    - **PRE-EXISTING** when it is real and the defect is on a line the diff did not
      change. It is still worth an issue; it is not this change's round.
 
+A rationale is not a refutation. REFUTED needs the code to handle the input, not a
+comment, a commit message or the spec saying the behaviour is fine. A finding tagged
+`SPEC-MANDATED` that reproduces is REAL and keeps the tag, so the orchestrator takes
+it to the user instead of editing the code against the spec.
+
 ## Prohibitions
 
 - You are one stage inside the task funnel. Do not invoke the task or investigate
@@ -43,7 +48,7 @@ So the default, whenever you cannot trace it, is REFUTED.
 
 ```
 VERIFIED: <n> REAL, <n> REFUTED, <n> PRE-EXISTING
-1 REAL|REFUTED|PRE-EXISTING  file:line
+1 REAL|REFUTED|PRE-EXISTING [SPEC-MANDATED]  file:line
   the evidence: the command and its output, or the lines that decide it
 2 ...
 NOTICED: anything nobody raised, one line each, or "nothing"
