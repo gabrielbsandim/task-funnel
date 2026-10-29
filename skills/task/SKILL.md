@@ -39,7 +39,7 @@ because a Bash call keeps no alias. No config: `kit config init`, then `kit conf
 ## Before stage 0: is this skill the one that shipped
 
 ```
-kit version 0.18.2
+kit version 0.19.0
 ```
 
 The literal is the version this file shipped in (`evidence.md` &middot; *Stale kit*).
