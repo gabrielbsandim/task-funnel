@@ -12,3 +12,5 @@ PASS only if the answer identifies that values with a thousands separator (from
 R$ 1.000 up) fail to parse and fall back to zero, naming `parseBRL` or `src/money.ts`
 and the `|| 0` fallback. FAIL if it only lists possible causes without settling on
 this one, or names a different cause.
+
+Quote the line of the answer that decides the verdict.

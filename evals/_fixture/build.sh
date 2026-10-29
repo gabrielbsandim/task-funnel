@@ -57,6 +57,13 @@ CFG
 
 printf '.playwright-mcp/\n' > .gitignore
 
+# The control arm: a plain CLAUDE.md with the funnel's five rules. The eval harness passes
+# the scaffold no caller variable, so the copy `eval-control build` makes carries a marker.
+FIXTURE="$(cd "$(dirname "$0")" && pwd)"
+if [ "${FUNNEL_CONTROL:-}" = "1" ] || [ -e "$FIXTURE/control-on" ]; then
+  cp "$FIXTURE/control.md" CLAUDE.md
+fi
+
 cat > docs/flow.md <<'DOC'
 # Flow
 One task, one branch, one pull request. Never commit or push to trunk.

@@ -26,6 +26,18 @@ mkdir -p "$OUT"
 CONFIG_DIR="$("$CFG" configdir)"
 
 die() { printf '%s\n' "$*" >&2; exit 1; }
+# Exit 3 is a refusal, as in eval-delta, pr-body and `kit ledger`: the input was
+# understood, and the answer is no.
+refuse() { printf '%s\n' "$*" >&2; exit 3; }
+
+# The "+N more" line for a list cut at a cap, and nothing when the cap cut nothing.
+# A lens told to read "every file below" trusts the list it is handed.
+more_line() {
+  local n
+  n="$(printf '%s\n' "$1" | grep -c . || true)"
+  [ "$n" -gt "$2" ] || return 0
+  printf '  +%s more, capped at %s %s\n' "$((n - $2))" "$2" "$3"
+}
 
 # One vocabulary of declarations for every lens that extracts names from a diff, so
 # a language the claims lens reads (Python `def`, Go `func`) is not one the
@@ -113,31 +125,55 @@ changed_lines() {
 changed_names() {
   local lines names
   lines="$(changed_lines)"
-  names="$(printf '%s\n' "$lines" | grep -oE "$EXPORTED_DECL" | awk '{print $NF}' | sort -u | head -30 || true)"
+  names="$(printf '%s\n' "$lines" | grep -oE "$EXPORTED_DECL" | awk '{print $NF}' | sort -u || true)"
   [ -n "$names" ] || names="$(printf '%s\n' "$lines" \
-    | grep -oE "($DECL_TYPES) +[A-Za-z_][A-Za-z0-9_]{5,}" | awk '{print $NF}' | sort -u | head -30 || true)"
+    | grep -oE "($DECL_TYPES) +[A-Za-z_][A-Za-z0-9_]{5,}" | awk '{print $NF}' | sort -u || true)"
   printf '%s' "$names"
 }
 
-claims_candidates() {
-  local tokens targets
-  tokens="$( changed_lines \
+# A deleted or renamed file leaves prose naming its old path, and no changed line
+# carries that path: the old path, and its stem when longer than 3 characters.
+gone_paths() {
+  local spec range
+  spec="$("$CFG" get '.slices.all')"
+  [ -n "$spec" ] || return 0
+  range="$(slice_range "$spec")"
+  ( cd "$REPO_ROOT" && eval "git diff --name-status -M $range" ) | awk -F'\t' '
+    $1 ~ /^(D|R)/ {
+      print $2
+      n = split($2, part, "/"); stem = part[n]; sub(/\.[^.]*$/, "", stem)
+      if (length(stem) > 3) print stem
+    }' | sort -u || true
+}
+
+claims_tokens() {
+  gone_paths
+  changed_lines \
     | grep -oE "(const|let|$DECL_TYPES) +[A-Za-z_][A-Za-z0-9_]*|[0-9]{2,}" \
-    | awk '{print $NF}' | sort -u | grep -Ev '^(0+|1[0-9]{3}|20[0-9]{2})$' | head -40 || true )"
-  [ -n "$tokens" ] || return 0
+    | awk '{print $NF}' | sort -u | grep -Ev '^(0+|1[0-9]{3}|20[0-9]{2})$' || true
+}
+
+claims_candidates() {
+  local all tokens targets t hits n cut=0 found=""
+  all="$(claims_tokens | awk 'NF && !seen[$0]++')"
+  [ -n "$all" ] || return 0
   targets="$("$CFG" get '.lenses.claims.grepTargets[]?' | tr '\n' ' ')"
   [ -n "$targets" ] || return 0
-  ( cd "$REPO_ROOT" && printf '%s\n' "$tokens" \
-      | while IFS= read -r t; do
-          [ -z "$t" ] && continue
-          # `|| true` because a token that matches no prose is the ordinary case,
-          # not a failure. Under `set -o pipefail` the grep's 1 became the
-          # pipeline's status and `set -e` killed the whole plan mid-print: the
-          # dispatch lines were already on stdout, so a claims lens whose
-          # candidates matched nothing printed a plan with its count line missing
-          # and exit 1 attached, which reads as a plan rather than as an error.
-          grep -rInF --exclude-dir=node_modules -- "$t" $targets 2>/dev/null | head -4 || true
-        done ) | sort -u | head -60
+  tokens="$(printf '%s\n' "$all" | head -40)"
+  while IFS= read -r t; do
+    # `|| true` because a token that matches no prose is the ordinary case, and
+    # under pipefail its exit 1 once killed the plan mid-print.
+    hits="$(cd "$REPO_ROOT" && grep -rInF --exclude-dir=node_modules -- "$t" $targets 2>/dev/null || true)"
+    [ -n "$hits" ] || continue
+    n="$(printf '%s\n' "$hits" | grep -c .)"
+    [ "$n" -le 4 ] || cut=$((cut + n - 4))
+    found="$found$(printf '%s\n' "$hits" | head -4)"$'\n'
+  done <<<"$tokens"
+  found="$(printf '%s' "$found" | grep . | sort -u || true)"
+  printf '%s\n' "$found" | head -60 | grep . || true
+  more_line "$found" 60 "candidate lines"
+  [ "$cut" -eq 0 ] || printf '  +%s more, capped at 4 matching lines per token\n' "$cut"
+  more_line "$all" 40 "tokens: prose naming those was not searched"
 }
 
 # The files the diff touches, for a lens that reads them whole rather than as
@@ -146,16 +182,17 @@ claims_candidates() {
 # request 880 a value hardcoded to 0 silenced a warning rendered 200 lines below
 # it, inside a file every lens had already "read".
 changed_files() {
-  local spec range bytes
+  local spec range bytes ranked
   # The lens's own slice, not `all`: a lens whose slice already excludes the test
   # tree should not spend its read budget on files another lens has the diff for.
   spec="$("$CFG" get ".slices.\"$("$CFG" get ".lenses.\"$1\".slice")\"")"
   range="$(slice_range "$spec")"
   # Ranked by how much of each file the change rewrote, because the cap cuts
   # somewhere and alphabetical order decides that by directory name.
-  ( cd "$REPO_ROOT" && eval "git diff --numstat $range" ) \
+  ranked="$( ( cd "$REPO_ROOT" && eval "git diff --numstat $range" ) \
     | awk '{ a=($1=="-")?0:$1; d=($2=="-")?0:$2; printf "%d\t%s\n", a+d, $3 }' \
-    | sort -rn | head -25 | cut -f2- \
+    | sort -rn | cut -f2- )"
+  printf '%s\n' "$ranked" | sed '/^$/d' | head -25 \
     | while IFS= read -r f; do
         bytes=0
         [ -f "$REPO_ROOT/$f" ] && bytes="$(wc -c <"$REPO_ROOT/$f")"
@@ -170,6 +207,7 @@ changed_files() {
           printf '%s   (%s bytes)\n' "$f" "$bytes"
         fi
       done
+  more_line "$ranked" 25 "files, ranked by lines changed"
 }
 
 # Lenses a level does not buy but a path does. Size is the wrong axis for risk: one
@@ -225,7 +263,7 @@ claim_round() {
   fi
   count="$(grep -c . "$file" || true)"
   if [ "$count" -ge "$cap" ]; then
-    die "this branch already had $count review round(s), and the $LANE lane allows $cap.
+    refuse "this branch already had $count review round(s), and the $LANE lane allows $cap.
 The fix ships on its gates, and every finding still open gets a written decision in
 the pull request body. Only the user can buy another round: --reset-rounds."
   fi
@@ -269,7 +307,7 @@ reads_outside() {
 # ranked `prisma/schema.prisma` first; the exported form yielded 12, one of them
 # the `pickCostSnapshot` that was finding number two on that pull request.
 consumers_candidates() {
-  local spec range names changed targets excl importers
+  local spec range names changed targets excl importers ranked
   names="$1"
   spec="$("$CFG" get '.slices.all')"
   range="$(slice_range "$spec")"
@@ -292,7 +330,7 @@ consumers_candidates() {
   # alphabetically. A cap has to cut somewhere, and the file that uses five of them
   # is the one whose behaviour the change is most likely to have altered; sorting by
   # name instead spends the whole budget in whichever directory sorts first.
-  ( cd "$REPO_ROOT" && printf '%s\n' "$names" \
+  ranked="$( cd "$REPO_ROOT" && printf '%s\n' "$names" \
       | while IFS= read -r t; do
           [ -z "$t" ] && continue
           # A name matching half the repository is a word, not a reference, and it
@@ -305,24 +343,46 @@ consumers_candidates() {
             count=0
           fi
           [ "$count" -gt 15 ] || printf '%s\n' "$hits" | grep . || true
-        done ) | grep -vxF -f "$excl" | sort | uniq -c | sort -rn | head -25 \
-    | awk '{printf "%s   (%s of the changed names)\n", $2, $1}'
+        done | grep -vxF -f "$excl" | sort | uniq -c | sort -rn \
+    | awk '{printf "%s   (%s of the changed names)\n", $2, $1}' )"
   rm -f "$excl"
+  [ -n "$ranked" ] || return 0
+  printf '%s\n' "$ranked" | head -25
+  more_line "$ranked" 25 "files, ranked by how many changed names they reference"
 }
 
 # Three different answers that used to print as one: no name could be read from the
 # diff, so the callers are unknown; names were read and nothing outside the diff
 # references them; or the ranked list.
 print_consumers() {
-  local names c
-  names="$(changed_names)"
-  if [ -z "$names" ]; then
+  local all names c
+  all="$(changed_names)"
+  if [ -z "$all" ]; then
     printf '%sunknown: no declaration name could be read from the diff, so grep for what it changed before calling it contained\n' "$1"
     return 0
   fi
+  names="$(printf '%s\n' "$all" | head -30)"
   c="$(consumers_candidates "$names")"
-  if [ -n "$c" ]; then printf '%s\n' "$c" | sed "s/^/$1/"; return 0; fi
-  printf '%snone matched: nothing outside the diff references %s\n' "$1" "$(printf '%s' "$names" | tr '\n' ' ' | sed 's/ $//')"
+  [ -n "$c" ] || c="none matched: nothing outside the diff references $(printf '%s' "$names" | tr '\n' ' ' | sed 's/ $//')"
+  printf '%s\n' "$c" "$(more_line "$all" 30 "declaration names: callers of those were not searched")" | grep . | sed "s/^/$1/"
+}
+
+# Checked before a round is claimed: a round spent on nothing still counts against
+# the cap, and a --since off this branch names a range that is not the fix.
+guard_range() {
+  local spec range
+  if [ -n "$since" ]; then
+    git -C "$REPO_ROOT" rev-parse --verify --quiet "$since^{commit}" >/dev/null \
+      || refuse "--since $since does not resolve to a commit, so there is no fix range to review"
+    git -C "$REPO_ROOT" merge-base --is-ancestor "$since" HEAD \
+      || refuse "--since ${since:0:8} is not an ancestor of HEAD, so ${since:0:8}..HEAD is not the fix"
+  fi
+  spec="$("$CFG" get '.slices.all')"
+  [ -n "$spec" ] || return 0
+  range="$(slice_range "$spec")"
+  ( cd "$REPO_ROOT" && eval "git diff --quiet $range" ) || return 0
+  [ -z "$since" ] || refuse "nothing changed in ${since:0:8}..HEAD, so there is no fix round to review"
+  refuse "the \"all\" slice ($spec) has no diff, so there is nothing to review"
 }
 
 case "${1:-}" in
@@ -361,6 +421,7 @@ case "${1:-}" in
 
   --plan)
     level="${2:?usage: review-package --plan <light|standard|deep>}"
+    guard_range
     lenses="$(with_risk "$level")"
     [ -n "$lenses" ] || die "no effort level \"$level\" in the config"
     printf 'effort %s%s\n\n' "$level" "${since:+, fix round since ${since:0:8}}"
@@ -380,6 +441,7 @@ case "${1:-}" in
   # that keeps independent contexts where the material actually differs.
   --dispatches)
     level="${2:-auto}"
+    guard_range
     risk_lenses >/dev/null
     # The lane decides the width and the cap. `auto` reads it from risk.paths, and a
     # named lane is the orchestrator passing on what triage or the user decided. A
@@ -397,7 +459,7 @@ case "${1:-}" in
     # A fix round at a cap of 1 is the common refusal, and it reads better before any
     # round is counted than as "already had 1".
     if [ -n "$since" ] && [ "${cap:-1}" -le 1 ] && [ "$reset" -eq 0 ]; then
-      die "the $LANE lane allows one review round, so there is no fix round to review.
+      refuse "the $LANE lane allows one review round, so there is no fix round to review.
 Run the gates on the fix and write one decision per finding still open."
     fi
     claim_round "${cap:-1}"
@@ -428,7 +490,8 @@ Run the gates on the fix and write one decision per finding still open."
     # the mistake is made at the moment of writing the prompt, which is this
     # output's only reader.
     printf '\nsend    each block below verbatim, plus only this task'"'"'s half: what the\n'
-    printf '        change is for, the acceptance criteria, and what was deliberately\n'
+    printf '        change is for, the acceptance criteria, the spec'"'"'s INVARIANTS,\n'
+    printf '        CONSTRAINTS and REVIEW FOCUS verbatim, and what was deliberately\n'
     printf '        left out. The agent already carries the reading discipline, the\n'
     printf '        rubric, CONFIRMED against PLAUSIBLE and the return format. Never tell\n'
     printf '        it what not to flag: it reports that instruction as a TRIPWIRE.\n'

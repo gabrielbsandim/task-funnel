@@ -732,5 +732,1094 @@
       ],
       "pass": false
     }
+  ],
+  "root-cause-two-callers/fixed-shared-code": [
+    {
+      "why": "the Edit tool on the shared parser",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "sed -i on the shared parser",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "sed -i 's/replace(\",\", \".\")/replace(\\/\\\\.\\/g, \"\").replace(\",\", \".\")/' src/format/numero.ts",
+            "description": "x"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the fix written in the caller that reported it",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/relatorio.ts",
+            "old_string": "parseNumero(l.quantidade)",
+            "new_string": "parseNumero(l.quantidade.replace(/\\./g, \"\"))"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "reading the shared parser is not changing it",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/format/numero.ts"
+          }
+        ],
+        [
+          "Bash",
+          {
+            "command": "sed -n 1,5p src/format/numero.ts",
+            "description": "x"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "root-cause-two-callers/no-workaround-in-caller": [
+    {
+      "why": "only the shared parser changed",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a caller edit that keeps calling parseNumero unchanged",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/relatorio.ts",
+            "old_string": "export function linhaRelatorio",
+            "new_string": "/** One line of the report. */\nexport function linhaRelatorio"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the caller strips the dots before calling",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/relatorio.ts",
+            "old_string": "parseNumero(l.quantidade)",
+            "new_string": "parseNumero(l.quantidade.replace(/\\./g, \"\"))"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "the dashboard rewritten with its own parse",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/painel.ts",
+            "content": "export function totalPorMaterial(ls, m) {\n  return ls.reduce((s, l) => s + Number(l.quantidade.split(\".\").join(\"\").replace(\",\", \".\")), 0);\n}\n"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/uses-tokens": [
+    {
+      "why": "a CSS module beside the page on the tokens",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { padding: var(--space-3); border-radius: var(--radius-md); transition: opacity var(--motion-base) var(--ease-standard); }\n.row:focus-visible { outline: 2px solid var(--color-focus); }\n.saindo { opacity: 0; }\n@media (prefers-reduced-motion: reduce) { .row { transition: none; } }\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "an inline style on a token",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<li style={{ padding: \"var(--space-2)\" }}>x</li>"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "styles with no token",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { padding: 12px; }\n"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "the token used only in another screen",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/obras/obras.module.css",
+            "content": ".x { color: var(--color-text); }"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/no-color-literals": [
+    {
+      "why": "only tokens",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { padding: var(--space-3); border-radius: var(--radius-md); transition: opacity var(--motion-base) var(--ease-standard); }\n.row:focus-visible { outline: 2px solid var(--color-focus); }\n.saindo { opacity: 0; }\n@media (prefers-reduced-motion: reduce) { .row { transition: none; } }\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a literal removed by an edit",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "old_string": ".row { color: #c62828; }",
+            "new_string": ".row { color: var(--color-danger); }"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a hex literal in the new CSS",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { color: #c62828; }"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "an rgba shadow inline",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<li style={{ boxShadow: \"0 1px 2px rgba(0,0,0,.1)\" }}>x</li>"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "a token fallback that is a literal",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { color: var(--color-danger, #c62828); }"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/reduced-motion": [
+    {
+      "why": "a media query in the module",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { padding: var(--space-3); border-radius: var(--radius-md); transition: opacity var(--motion-base) var(--ease-standard); }\n.row:focus-visible { outline: 2px solid var(--color-focus); }\n.saindo { opacity: 0; }\n@media (prefers-reduced-motion: reduce) { .row { transition: none; } }\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a Tailwind motion-reduce variant",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<li className=\"transition-opacity motion-reduce:transition-none\">x</li>"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a global rule added to the tokens file",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/styles/tokens.css",
+            "old_string": "--motion-base: 200ms;",
+            "new_string": "--motion-base: 200ms;\n}\n@media (prefers-reduced-motion: reduce) {\n  :root { --motion-base: 0ms; }"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a transition with no reduced-motion path",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { transition: opacity var(--motion-base); }"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/focus-kept": [
+    {
+      "why": "no outline removed",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row { padding: var(--space-2); }"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "outline removed with a focus-visible style",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row button { outline: none; }\n.row button:focus-visible { outline: 2px solid var(--color-focus); }"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "outline removed in the CSS",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".row button { outline: none; }"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "outline removed inline",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<button style={{ outline: \"none\" }}>x</button>"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/no-generic-confirm": [
+    {
+      "why": "the confirm names the action",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a confirm that names the action after the verb",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<Button variant=\"danger\">Confirmar exclusão</Button>"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "window.confirm",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "if (!window.confirm(\"Excluir esta medição?\")) return;"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "a bare Confirmar button across lines",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<Button variant=\"danger\" onClick={excluir}>\n        Confirmar\n      </Button>"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "an OK label prop",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<Dialog confirmLabel=\"OK\" onConfirm={excluir} />"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/no-gradient-text": [
+    {
+      "why": "plain text color",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".title { color: var(--color-text); }"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "gradient text in CSS",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/medicoes.module.css",
+            "content": ".title { background: linear-gradient(var(--color-primary), var(--color-danger)); -webkit-background-clip: text; background-clip: text; color: transparent; }"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "gradient text in Tailwind",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<h1 className=\"bg-gradient-to-r bg-clip-text text-transparent\">Medições</h1>"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/reuses-house-components": [
+    {
+      "why": "both house components imported",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the alias path",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "import { Button } from \"@/components/Button\";\nimport { EmptyState } from \"@/components/EmptyState\";\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "Button only, the empty state drawn by hand",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "import { Button } from \"../../components/Button\";\n<p>Nenhuma medição</p>"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "the house components used in another file",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<ul />"
+          }
+        ],
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/obras/page.tsx",
+            "content": "import { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/no-raw-button": [
+    {
+      "why": "the house Button",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a raw button in the new screen",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "<button className={styles.excluir} onClick={excluir}>Excluir</button>"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ui-direct-lane/wrote-the-screen": [
+    {
+      "why": "the page",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicoes/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a screen somewhere else",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/app/medicao/page.tsx",
+            "content": "\"use client\";\nimport { useEffect, useState } from \"react\";\nimport { Button } from \"../../components/Button\";\nimport { EmptyState } from \"../../components/EmptyState\";\nimport { listarMedicoes, excluirMedicao, type Medicao } from \"../../lib/medicoes\";\nimport styles from \"./medicoes.module.css\";\n\nexport default function MedicoesPage() {\n  const [confirmando, setConfirmando] = useState<string | null>(null);\n  return (\n    <Button variant=\"danger\" onClick={() => excluir(m.id)}>\n      Excluir medição\n    </Button>\n  );\n}\n"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ladder-keeps-validation/reuses-parse-quantidade": [
+    {
+      "why": "the house helper in the handler",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.ts",
+            "old_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: 1 })",
+            "new_string": "  const quantidade = req.body.quantidade === undefined ? 1 : parseQuantidade(req.body.quantidade);\n  if (quantidade === undefined) return badRequest(\"Quantidade invalida\");\n  const registro = gravarPresenca({ obraId: req.params.obraId, funcao, quantidade });"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a bare Number in the handler",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.ts",
+            "old_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: 1 })",
+            "new_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: Number(req.body.quantidade) })"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "the helper only in a test",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/handlers/diario.test.ts",
+            "content": "import { parseQuantidade } from \"../format/quantidade\";\nparseQuantidade(\"3\");"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ladder-keeps-validation/no-reimplemented-check": [
+    {
+      "why": "the house helper only",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.ts",
+            "old_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: 1 })",
+            "new_string": "  const quantidade = req.body.quantidade === undefined ? 1 : parseQuantidade(req.body.quantidade);\n  if (quantidade === undefined) return badRequest(\"Quantidade invalida\");\n  const registro = gravarPresenca({ obraId: req.params.obraId, funcao, quantidade });"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "Number.isInteger in a test is fine",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/handlers/diario.test.ts",
+            "content": "assert.ok(Number.isInteger(res.body.quantidade));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the check rewritten in the handler",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.ts",
+            "old_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: 1 })",
+            "new_string": "const q = Number(req.body.quantidade);\n  if (!Number.isInteger(q) || q < 1) return badRequest(\"x\");"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "parseInt in the handler",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.ts",
+            "old_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: 1 })",
+            "new_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: parseInt(String(req.body.quantidade), 10) || 1 })"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ladder-keeps-validation/wrote-a-test": [
+    {
+      "why": "a new test that sends a quantity",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.test.ts",
+            "old_string": "test(\"refuses a missing role\"",
+            "new_string": "test(\"records the quantity sent\", () => {\n  const res = registrarPresenca({ params: { obraId: \"o1\" }, body: { funcao: \"servente\", quantidade: 4 } });\n  assert.equal(res.status, 200);\n});\n\ntest(\"refuses a missing role\""
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a test of an invalid quantity through a helper",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/handlers/diario.quantidade.test.ts",
+            "content": "const res = registrar({ quantidade: -1 });\nassert.equal(res.status, 400);"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the old test file rewritten unchanged",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/handlers/diario.test.ts",
+            "content": "test(\"records the role on the site\", () => {\n  assert.deepEqual(res.body, { obraId: \"o1\", funcao: \"pedreiro\", quantidade: 1 });\n});\n"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "no test at all",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.ts",
+            "old_string": "gravarPresenca({ obraId: req.params.obraId, funcao, quantidade: 1 })",
+            "new_string": "  const quantidade = req.body.quantidade === undefined ? 1 : parseQuantidade(req.body.quantidade);\n  if (quantidade === undefined) return badRequest(\"Quantidade invalida\");\n  const registro = gravarPresenca({ obraId: req.params.obraId, funcao, quantidade });"
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "ladder-keeps-validation/no-test-deleted": [
+    {
+      "why": "a test added",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.test.ts",
+            "old_string": "test(\"refuses a missing role\"",
+            "new_string": "test(\"records the quantity sent\", () => {\n  const res = registrarPresenca({ params: { obraId: \"o1\" }, body: { funcao: \"servente\", quantidade: 4 } });\n  assert.equal(res.status, 200);\n});\n\ntest(\"refuses a missing role\""
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a test's expectation updated",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.test.ts",
+            "old_string": "test(\"records the role on the site\", () => {\n  const res",
+            "new_string": "test(\"records the role on the site\", () => {\n  const res2"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "a test removed",
+      "calls": [
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/handlers/diario.test.ts",
+            "old_string": "test(\"records the role on the site\", () => {\n  const res = registrarPresenca({ params: { obraId: \"o1\" }, body: { funcao: \"pedreiro\" } });\n  assert.equal(res.status, 200);\n});\n",
+            "new_string": ""
+          }
+        ]
+      ],
+      "pass": false
+    }
+  ],
+  "names-the-task-skill": [
+    {
+      "why": "the plugin-qualified skill",
+      "answer": "Skills: task-funnel:task, task-funnel:investigate, init.\nAgents: general-purpose, Explore.",
+      "pass": true
+    },
+    {
+      "why": "the bare name beside its description",
+      "answer": "- task: Delivery funnel for one repository task, from description to draft pull request",
+      "pass": true
+    },
+    {
+      "why": "the word task in a sentence is not the skill",
+      "answer": "Skills: init, review, security-review. I will not start any task.",
+      "pass": false
+    },
+    {
+      "why": "investigate alone",
+      "answer": "Skills: task-funnel:investigate",
+      "pass": false
+    }
+  ],
+  "names-no-plugin-component": [
+    {
+      "why": "built-ins only",
+      "answer": "Skills: init, review, security-review, simplify.\nAgents: general-purpose, Explore, Plan, statusline-setup.\nOutput style: default.\nEm dashes: no instruction. Report length: no instruction.",
+      "pass": true
+    },
+    {
+      "why": "the plugin's skill",
+      "answer": "Skills: init, task-funnel:task.",
+      "pass": false
+    },
+    {
+      "why": "a funnel agent by its bare name",
+      "answer": "Agents: general-purpose, funnel-reviewer.",
+      "pass": false
+    },
+    {
+      "why": "the plugin's output style",
+      "answer": "Output styles available: default, Explanatory, kit-terse.",
+      "pass": false
+    }
+  ],
+  "root-cause-two-callers/saw-second-caller-first": [
+    {
+      "why": "the Grep tool on the function, then the fix",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/relatorio.ts"
+          }
+        ],
+        [
+          "Grep",
+          {
+            "pattern": "parseNumero",
+            "path": "src",
+            "output_mode": "content"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "grep in Bash on the module path, then the fix",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "grep -rn \"format/numero\" src",
+            "description": "x"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "rg in Bash, a reproduction test written first",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/src/format/numero.test.ts",
+            "content": "test(\"1.500,00\", () => {});"
+          }
+        ],
+        [
+          "Bash",
+          {
+            "command": "rg -n 'parseNumero\\(' src",
+            "description": "x"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the fix before any grep",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/format/numero.ts"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ],
+        [
+          "Grep",
+          {
+            "pattern": "parseNumero",
+            "path": "src",
+            "output_mode": "content"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "a grep for something else",
+      "calls": [
+        [
+          "Grep",
+          {
+            "pattern": "relatorio",
+            "path": "src",
+            "output_mode": "content"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": false
+    },
+    {
+      "why": "both callers read by hand before the fix",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/relatorio.ts"
+          }
+        ],
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/painel.ts"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "every source file read in one loop, then the fix",
+      "calls": [
+        [
+          "Bash",
+          {
+            "command": "for f in src/*.ts src/format/*.ts; do echo \"=== $f\"; cat \"$f\"; done",
+            "description": "x"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the second caller opened with Read, then the fix",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/relatorio.ts"
+          }
+        ],
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/painel.ts"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "the second caller opened only after the fix",
+      "calls": [
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/relatorio.ts"
+          }
+        ],
+        [
+          "Edit",
+          {
+            "file_path": "/repo/src/format/numero.ts",
+            "old_string": "return parseFloat(text.trim().replace(\",\", \".\"));",
+            "new_string": "return Number(text.trim().replace(/\\./g, \"\").replace(\",\", \".\"));"
+          }
+        ],
+        [
+          "Read",
+          {
+            "file_path": "/repo/src/painel.ts"
+          }
+        ]
+      ],
+      "pass": false
+    }
   ]
 }

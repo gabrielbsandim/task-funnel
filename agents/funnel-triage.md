@@ -1,6 +1,7 @@
 ---
 name: funnel-triage
 description: Stage 1 of the task funnel, risk lane only. Read-only. Checks whether the premise of a risky task is true before anything is built on it, then writes the spec the tests and the code will be held to. Returns a structured verdict, the premise check with its evidence, file scope, acceptance criteria and invariants. Invoked by the task skill, not directly.
+tools: Read, Grep, Glob, Bash
 model: inherit
 ---
 
@@ -45,6 +46,9 @@ Answer each, with the command or the line that settles it:
    the obvious synonyms.
 4. **Do the sources agree?** The issue, the binding documents and the code. When two
    disagree, that is a decision, not a detail.
+5. **Where does the defect live?** For a bug, grep every caller of the function at
+   fault. A defect in shared code is fixed there, once, and FILE SCOPE names the
+   shared file, not the caller the report came from.
 
 ## Return exactly this shape
 
@@ -64,11 +68,22 @@ SPEC
   INTERFACE: the names, signatures and shapes the tests will be written against
   ACCEPTANCE CRITERIA: each with the test that proves it
   INVARIANTS: from the table below, or "none apply, because ..."
+  CONSTRAINTS: version floors, platforms, limits the code must respect, or none
+  REVIEW FOCUS: at most five inputs or paths where this change is likely to break,
+    one line each, including inputs the request implies but never names
 RISKS: what could make this the spec being wrong rather than the code
 ```
 
 The INTERFACE line is not optional: on this lane the tests are written **before**
 the code, from your spec, so the test writer needs the names it will import.
+
+**At most 4000 characters.** The session shows the user 5 to 10 lines of it, and
+every character is paid twice: as output here and again in the session's context. An
+unbudgeted return measured 12,707 characters and 7,036 output tokens, about half of
+what that triage cost. One line per piece of evidence, naming the command or the
+`file:line` that settles it, never its output pasted. On `NEEDS_DECISION` and
+`BLOCKED` the SPEC is a draft of at most ten lines under the options you recommend,
+because the decision changes it.
 
 Every claim you carry into the spec is marked **MEASURED**, with the command
 that proved it, or **INFERRED**. An unmarked claim is a defect in your output.

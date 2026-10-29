@@ -97,6 +97,8 @@ These are commands rather than instructions, because prose does not execute:
 | `kit pr-body <file>` | a pull request body that competes with the diff instead of introducing it. It measures the prose you added, not the template, its tables or a fenced block, and refuses over 2000 characters or 600 in one section. The chat report had a budget and the body did not, so the overflow went there: one measured body ran to 11902 characters of prose in front of a 163-line source diff. |
 | `kit comments` | a code comment that narrates, or carries a ticket key, a pull request number, a date or an "N of M" count, all of which are true only on the day they are written. Added lines only, merge base against the working tree, so it gates before the commit and never fails on what the branch inherited. A run is capped at `comments.maxLines` lines of text, 2 by default; a JSDoc's delimiters are free and a `Usage:` block ends the count. |
 | `kit ratchet --config F` | a strict lint rule set that is red on arrival. It runs ESLint with its own config over every changed file twice, at the merge base and now, and fails only on a violation the base did not have, compared by rule and message with the numbers blanked, so moving code is not a new violation and making an already too complex function more complex is. Measured on a real branch: 4 files, 2 new errors, 22 inherited, 1.45s; one base file alone carried 13 `max-depth` violations an absolute gate would have charged to the change. |
+| `kit design` | an interface defect the direct lane ships because no browser lens looks at it. It reads only the lines the branch adds in files under `browser.screenGlobs` (css, scss, tsx, jsx, vue, svelte, html) and flags gradient-text, side-tab, bounce-easing, tiny-text (12px, 11px on a control), tight-leading (under 1.3x on body text), wide-tracking (over 0.05em), off-token (a colour within 6 per channel or a length within 0.5px of a `ui.tokens` value, or equal to one), img-alt, outline-none with no `:focus-visible` in the file, and motion in a file with no `prefers-reduced-motion`. Thresholds follow impeccable's detector. `design-ignore: <rule> who decided: <evidence>` on the line or the line above silences one rule; an ignore without evidence is itself a finding, and so is a token minted a hair off an existing one to give a literal a name. `ui.detectCmd` is appended and never decides the exit code. |
+| `kit eval-control build`, `kit eval-control merge <plugin.json> <control.json>` | crediting the plugin for what five lines of rules would do. `build` copies the suite to `evals-control/` with the funnel's rules as each case's `append_system_prompt`, and `merge` pairs the plugin arm of one run with the bare arm of the other for `kit eval-delta`. |
 | `kit ledger <file>` | a reply comment nobody finishes reading. Findings live in the pull request body as a table since 0.18.0, so this measures what is left: a comment answering a person, at 1000 characters of prose and 350 per section, half the body's budget. Table rows cost nothing. The separate findings comment it used to measure ran to 4515, 4432 and 3734 characters of prose on pull requests 874, 877 and 880, each longer than the body under it. In a repo with `ledger` false it refuses instead of measuring. |
 | `kit gate <stage>` | paying twice for the same check. Receipts are keyed by the working tree's SHA, so the pre-push check skips what the implement gate just proved: measured on the repository this was built against on 2026-08-30, that is 359s a push, lint 101s plus types 72s plus suite 186s, and a fix round pushes again. The guard is `kit gate --verify ship >/dev/null 2>&1 && exit 0` at the top of the hook, and it fails open. `gateJobs` runs a stage's independent gates at once; `exclusive` keeps one alone. Since 0.16.0 a gate's `covers` names the gates it is a superset of, so a coverage pass leaves the plain suite's receipt too and a suite never runs twice over one tree. Since 0.11.0 the tree SHA refuses to be wrong quietly: `git add -A` aborts on any path that is not a regular file, a symlink or a git directory, and the sha then silently fell back to HEAD's, so every receipt verified clean against any uncommitted change. Found live, as three character devices an agent sandbox bind-mounts over dotfiles. |
 | `kit review` | a review round nobody counted, and one dispatch per reviewer. With no argument it takes the lane from `risk.paths`, naming the file and pattern that matched, and prints `lane, round N of M`. Each reviewed head SHA is recorded per branch, so the same head is the same round and a new head past the lane's cap exits 3; only `--reset-rounds` clears it. Two pull requests once ran 21 and 25 rounds under a cap that was only written down, 14% of five weeks of spend. One dispatch per slice, with the diff written to a file so no reviewer runs `git`, and `reviewGuide` added to every dispatch's reading. A lens may declare `readsOutsideDiff`: it is dispatched alone, with the files the diff touched listed to be read whole and the callers of what it exports precomputed by grep. Measured on two pull requests, all eight findings an outside reviewer returned needed exactly that reading. |
@@ -133,10 +135,26 @@ a green report from a session that never left the login page, and a wrong triage
 verdict decides whether the rest runs at all: both are silent, so both stay on the
 session's model.
 
+Every agent declares its `tools:`. Without the line an agent loads every tool schema
+the session has, MCP servers included: the reviewer's first request measured 54.5k
+tokens at the median against 24.2k for the one agent that declared them. No funnel
+agent holds `Agent` or `Skill`, and only the test writer can write files;
+`tests/check-frontmatter.py` fails on a grant outside that.
+
 There is no implementer agent since 0.18.0. The session writes the code: over five
 weeks of real use, half of what the implementer cost went to fix rounds re-reading a
 repository the session already had in context, and the session then had to trust
 its report.
+
+## Screens, at creation time
+
+The browser lens reads a screen after it exists, and only on the risk lane. Before
+that, on every lane, a change that touches a file under `browser.screenGlobs` reads
+`skills/task/screen.md` before writing it: the sibling screen and house components to
+reuse, tokens instead of literals, the states floor (loading, empty by kind, error,
+disabled), the harden list and the copy rules. The direct-lane spec carries a SCREEN
+line naming them, and `kit design` scans the added lines for what a static read can
+decide.
 
 ## Screens, in a real browser
 
@@ -404,13 +422,16 @@ python3 tests/check-frontmatter.py     # every frontmatter block through a stric
 python3 tests/test-phase-gate.py       # 18 cases: 5 must block, 13 must not
 python3 tests/test-usage.py            # 41 cases: the lane split, counting a request once, the rate per version, the sum per branch
 python3 tests/test-new-code.py         # 34 cases: what a branch adds, never what it inherited
-python3 tests/test-review-package.py   # 59 cases: grouping, the lane, the round cap, and the callers a consequences lens is handed
+python3 tests/test-review-package.py   # 77 cases: grouping, the lane, the round cap, the refused ranges, the caps it prints, and the callers a consequences lens is handed
+python3 tests/test-design.py           # 123 cases: a hit and a pass per rule, the ignores, the token ratchet
 python3 tests/test-fan-out-routing.py  # 51 cases: the lane rules in the skill and the triage agent agree
 python3 tests/test-guards.py           # 57 cases, gate-env among them
 python3 tests/test-gate-receipt.py     # 10 cases: a code edit with no gate after it, and everything it must ignore
 python3 tests/test-escapes.py          # 12 cases: hot files, exclusions, reverts, lanes, the eval skeleton
 python3 tests/test-eval-delta.py       # 9 cases: pooled runs, the delta, the floor, the bootstrap interval
 python3 tests/test-grader-examples.py  # every deterministic grader against its good and bad examples
+python3 tests/grader-selftest.py       # every llm grader has a good and a bad example; --run judges them (paid)
+python3 tests/test-eval-control.py     # 15 cases: the control suite and the pairing eval-delta reads
 python3 tests/test-skill-size.py       # every SKILL.md under the 20,000 a compaction keeps, and what moved out
 python3 tests/test-review-contract.py  # SPEC-MANDATED, TRIPWIRE and the screen lens probes, end to end in the prose
 claude plugin validate . --strict      # manifests, skills, agents, commands
@@ -451,6 +472,7 @@ early is somebody's unpushed work.
 | the browser lens | plumbing proven: server started, polled, navigated, resized, and the layout probe named the overflowing element and the below-fold button. **Never run against a real authenticated app**, so the auth path and the dispatch prompt are unproven |
 | the lite lane | 9 cases in CI on the profile, the round cap and the one-reviewer check, and `kit review` run against a real branch. **Never run end to end as a task**, so the skill section is unproven in use |
 | `kit comments`, `kit ratchet` | 34 cases in CI against a fake ESLint, and 5 mutations turn them red. The ratchet ran against a real branch with ESLint 8; ESLint 9 with a flat config is written and **never run** |
+| `kit design` | 123 cases in CI, a hit and a pass per rule plus ignores and the ratchet, and 8 mutations to the thresholds, the ignore evidence and the whole-file remedy each turn it red. **Never run against a real app's branch**, so the false-positive rate on real screens is unmeasured |
 | Jira and Azure DevOps adapters | written from the API contract, **never run**, marked so in their own source |
 | `evals/` | 12 cases, schema validated offline in CI and run with the no-plugin baseline on 2026-10-20: mean delta +0.32 on the outcome cases, in the README |
 

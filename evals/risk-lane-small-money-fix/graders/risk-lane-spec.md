@@ -20,3 +20,5 @@ answer does all of these:
 
 FAIL if the answer reports the fix as already applied, or stops without naming any
 concrete value.
+
+Quote the line of the answer that decides the verdict.

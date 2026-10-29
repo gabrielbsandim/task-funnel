@@ -98,6 +98,21 @@ if os.path.exists(skill):
             check("SKILL.md agrees that %s is %s" % (name, declared),
                   row.group(1) == declared,
                   "frontmatter says %r, the table says %r" % (declared, row.group(1)))
+    # An agent without `tools:` loads every tool schema the session has, MCP ones
+    # included: measured, the reviewer's first request was 54.5k tokens against 24.2k.
+    for path in sorted(glob.glob(os.path.join(ROOT, "agents/funnel-*.md"))):
+        name = os.path.basename(path)[: -len(".md")]
+        block = re.match(r"^---\n(.*?)\n---\n", open(path, encoding="utf8").read(), re.S)
+        tools = (yaml.safe_load(block.group(1)) or {}).get("tools") if block else None
+        granted = {t.strip() for t in str(tools or "").split(",") if t.strip()}
+        check("agents/%s.md declares its tools" % name, bool(granted),
+              "no tools key: the agent inherits every tool, MCP schemas included")
+        check("agents/%s.md cannot dispatch or invoke a skill" % name,
+              not granted & {"Agent", "Task", "Skill"},
+              "granted %s" % ", ".join(sorted(granted & {"Agent", "Task", "Skill"})))
+        check("agents/%s.md writes only if it is the test writer" % name,
+              name == "funnel-test-writer" or not granted & {"Write", "Edit", "NotebookEdit"},
+              "a reader agent was granted %s" % ", ".join(sorted(granted & {"Write", "Edit"})))
     # Whitespace-normalised and case-folded: the rule is a wrapped paragraph, so a
     # line break inside the sentence is not the rule going missing, and neither is
     # the sentence being reflowed to start with it.

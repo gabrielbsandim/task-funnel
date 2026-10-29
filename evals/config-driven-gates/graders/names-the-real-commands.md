@@ -23,3 +23,5 @@ These do not fail the answer: mentioning `main` only to say it is not the base
 the repository has no `justfile` so the commands would fail today, or naming the
 stage (`ship`, `implement_first_pass`) the commands belong to. Those are
 observations about the same three commands, not other commands.
+
+Quote the line of the answer that decides the verdict.

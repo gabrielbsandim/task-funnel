@@ -112,6 +112,7 @@ reproduces gets fixed. The pull request carries the findings table.
 | `/task-funnel:task` | one task, description or issue number, to a draft pull request |
 | `/task-funnel:investigate` | a question about the system. Read-only, ends in an answer, never a change |
 | `/task-funnel:ship` | work already committed on a branch, to a reviewable pull request |
+| `/task-funnel:review` | a diff, branch or pull request this session did not write. Only findings that survive a refutation |
 | `/task-funnel:backlog` | the open board: what is the same work, what is an orphan, what ships together |
 | `/task-funnel:note` | one durable fact into a markdown vault, with provenance |
 

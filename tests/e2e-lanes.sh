@@ -9,6 +9,7 @@ PLUGIN="$(cd "$(dirname "$0")/.." && pwd)"
 LANES="${1:-all}"
 [ "$LANES" = all ] && LANES="trivial direct risk"
 fail=0
+skipped=0
 
 check() {
   if eval "$2"; then printf 'ok    %s\n' "$1"; return; fi
@@ -77,6 +78,73 @@ shipped() {
 agents() { grep -c "^AGENT $1\$" "$EV"; }
 pushed_touches() { [ -n "$BRANCH" ] && git -C "$ROOT/remote.git" log --name-only --format= "trunk..$BRANCH" | grep -qx "$1"; }
 
+node_strips_types() {
+  command -v node >/dev/null 2>&1 &&
+    node -e 'const [a, b] = process.versions.node.split(".").map(Number); process.exit(a > 22 || (a === 22 && b >= 6) ? 0 : 1)'
+}
+
+# Hidden checks: the pushed branch's own code on inputs the prompt never named. $1 is the
+# file, $2 a regex for the exported function, $3 a JS array of [label, args, (result) => ok].
+hidden() {
+  local file="$1" pick="$2" cases="$3" tree verdict label got
+  if ! node_strips_types; then
+    printf 'SKIP  hidden checks on %s: node %s cannot strip types, 22.6 or newer is needed\n' \
+      "$file" "$(node --version 2>/dev/null || echo 'is missing')"
+    skipped=$((skipped + 1))
+    return
+  fi
+  tree="$ROOT/hidden"
+  mkdir -p "$tree"
+  [ -n "$BRANCH" ] && git -C "$ROOT/remote.git" archive "$BRANCH" | tar -x -C "$tree"
+  [ -f "$tree/package.json" ] || printf '{"type":"module"}\n' > "$tree/package.json"
+  cat > "$ROOT/hidden.mjs" <<'JS'
+import { register } from "node:module";
+import { pathToFileURL } from "node:url";
+import { existsSync } from "node:fs";
+
+// The produced code may import a sibling without its extension, which ESM refuses.
+register("data:text/javascript," + encodeURIComponent(
+  'export async function resolve(s, c, next) { try { return await next(s, c); } catch (e) { if (!s.startsWith(".")) throw e; return next(s + ".ts", c); } }'));
+
+const [file, pick, source] = process.argv.slice(2);
+const near = (r, x) => typeof r === "number" && Math.abs(r - x) < 1e-9;
+const cases = new Function("near", `return ${source}`)(near);
+const show = (v) => (typeof v === "string" ? JSON.stringify(v) : String(v)).slice(0, 80);
+let fn;
+let why = "";
+try {
+  const mod = existsSync(file) ? await import(pathToFileURL(file).href) : {};
+  const fns = Object.entries(mod).filter(([, v]) => typeof v === "function");
+  const re = new RegExp(pick, "i");
+  fn = (fns.find(([k]) => re.test(k)) ?? (fns.length === 1 ? fns[0] : []))[1];
+  why = `no exported function matching /${pick}/ (found: ${fns.map(([k]) => k).join(", ") || "none"})`;
+} catch (error) {
+  why = `cannot load: ${String(error.message).split("\n")[0]}`;
+}
+for (const [label, args, holds] of cases) {
+  if (!fn) {
+    console.log(`FAIL\t${label}\t${why}`);
+    continue;
+  }
+  let result;
+  try {
+    result = fn(...args);
+  } catch (error) {
+    console.log(`FAIL\t${label}\tthrew ${String(error.message).split("\n")[0]}`);
+    continue;
+  }
+  const passed = holds(result);
+  console.log(`${passed ? "PASS" : "FAIL"}\t${label}\t${passed ? "" : `got ${show(result)}`}`);
+}
+JS
+  local n=0
+  while IFS=$'\t' read -r verdict label got; do
+    n=$((n + 1))
+    check "hidden: $label${got:+ ($got)}" '[ "$verdict" = PASS ]'
+  done < <(node --experimental-strip-types --no-warnings "$ROOT/hidden.mjs" "$tree/$file" "$pick" "$cases" 2>&1)
+  check "the hidden checks on $file printed a verdict" '[ "$n" -gt 0 ]'
+}
+
 for lane in $LANES; do
   case "$lane" in
     trivial)
@@ -97,6 +165,13 @@ for lane in $LANES; do
       check "one review ran (funnel-reviewer dispatched)" '[ "$(agents funnel-reviewer)" -ge 1 ]'
       check "kit review never opened a second round" '! grep -qE "^OUT .*round 2 of" "$EV"'
       shipped direct
+      hidden src/texto.ts 'trunc|cort|limit|abrev|resum|encurt|observ' '[
+        ["an empty observation stays empty", ["", 500], (r) => r === ""],
+        ["a short observation is not cut", ["Concretagem da laje", 500], (r) => r === "Concretagem da laje"],
+        ["exactly 500 characters is not cut", ["a".repeat(500), 500], (r) => r === "a".repeat(500)],
+        ["501 characters is cut and ends in ...", ["b".repeat(501), 500], (r) => typeof r === "string" && r.endsWith("...") && r.startsWith("b".repeat(497)) && r.length <= 503],
+        ["5000 characters come back at most 503 long", ["c".repeat(5000), 500], (r) => typeof r === "string" && r.endsWith("...") && r.length >= 500 && r.length <= 503]
+      ]'
       ;;
     risk)
       run_lane risk 'O parseBRL quebra com separador de milhar: "12.500,00" nao vira 12500. Corrige. A spec ja esta aprovada: "12.500,00" vira 12500, "850,00" vira 850, "1.234.567,89" vira 1234567.89, tudo o que hoje ja e lido certo continua igual, e src/medicao.ts nao muda. Pode seguir ate a PR sem me perguntar; commit e push estao autorizados.'
@@ -108,10 +183,18 @@ for lane in $LANES; do
       check "a review ran (funnel-reviewer dispatched)" '[ "$(agents funnel-reviewer)" -ge 1 ]'
       check "kit review never opened a third round" '! grep -qE "^OUT .*round 3 of" "$EV"'
       shipped risk
+      hidden src/money.ts '^parseBRL$' '[
+        ["parseBRL(\"1.500,00\") is 1500", ["1.500,00"], (r) => near(r, 1500)],
+        ["parseBRL(\"0,01\") is 0.01", ["0,01"], (r) => near(r, 0.01)],
+        ["parseBRL(\"0,5\") still reads 0.5", ["0,5"], (r) => near(r, 0.5)],
+        ["parseBRL(\"1000\") still reads 1000", ["1000"], (r) => near(r, 1000)],
+        ["parseBRL(\" 42,10 \") still trims to 42.1", [" 42,10 "], (r) => near(r, 42.1)]
+      ]'
       ;;
     *) echo "unknown lane: $lane"; exit 2 ;;
   esac
 done
 
+[ "$skipped" -gt 0 ] && echo "SKIPPED $skipped group(s) of hidden checks, see SKIP above"
 [ "$fail" -eq 0 ] && echo "OK" || echo "FAILED"
 exit "$fail"

@@ -1,6 +1,7 @@
 ---
 name: funnel-reviewer
 description: Stage 4 of the task funnel. Reviews one already-written diff slice against a numbered multi-part contract, one part per lens, and returns only findings that would make the change untrustworthy, graded Critical or Important, CONFIRMED or PLAUSIBLE, and NEW or PRE-EXISTING. Reads the diff file it is given and does not run git. Invoked by the task skill, not directly.
+tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
 
@@ -34,7 +35,7 @@ tokens of two separate reviewers. So the parts share one read.
 
 | Part | The question |
 | --- | --- |
-| `correctness` | Does the code do what the acceptance criteria say, for every input the change can now receive? Include each new I/O call: what happens when it throws or hangs. |
+| `correctness` | Does the code do what the acceptance criteria say, for every input the change can now receive? Include each new I/O call: what happens when it throws or hangs. A bug fixed in one caller while the shared code it calls stays broken is Important: name the other caller. |
 | `tests` | Would these tests fail if the behaviour they name broke? A test that asserts the mock was called, or nothing at all, proves nothing. |
 | `claims` | Which sentence, written by this change **or left standing by it**, is now false against the code as committed? Start from the prose candidates in the dispatch. |
 | `surfaces` | Did every place a user reads about this behaviour (help, policy, docs) move with it? |
@@ -42,6 +43,15 @@ tokens of two separate reviewers. So the parts share one read.
 
 A part with another name is a lens this repository defined: answer it from its
 name and the documents the dispatch lists for it.
+
+## Constraints and review focus
+
+Your dispatch may carry the spec's `CONSTRAINTS` (a version floor, a platform, a
+limit the change must respect) and `REVIEW FOCUS` (at most five inputs or paths where
+the spec's author expects this change to break). Check every constraint against the
+diff. Answer every focus item by number, under the part it belongs to:
+`FOCUS <n> checked: <the line that settles it>`, a finding, or
+`FOCUS <n> not checked: <why>`. Silence on a focus item is not an answer.
 
 ## Only what blocks trust
 

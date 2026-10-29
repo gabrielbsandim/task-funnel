@@ -7,7 +7,8 @@ gate loops the agents actually wrote, and that was found by reading traces after
 money was spent. `evals/_grader-examples.json` holds tool calls keyed by grader name,
 each marked pass or fail, and this replays them through every `tool_used` and
 `regex` grader of that name the way the harness does: a tool call's input is JSON,
-`input_match` searches it, and a `trace` regex searches the serialized calls.
+`input_match` searches it, a `trace` regex searches the serialized calls, and a
+`last_message` regex (the harness default) searches the example's `answer`.
 
 A deterministic grader with no example that passes and none that fails is itself a
 failure, because a grader nobody has seen fail is a grader nobody knows can.
@@ -55,7 +56,15 @@ def trace_of(calls):
                      for i, (tool, data) in enumerate(calls))
 
 
-def grade(config, calls):
+def as_recorded(example):
+    # A real trace writes Edit's replace_all before file_path; a pattern anchored on file_path missed it.
+    calls = [[tool, {"replace_all": False, **data} if tool == "Edit" else data]
+             for tool, data in example.get("calls") or []]
+    return dict(example, calls=calls)
+
+
+def grade(config, example):
+    calls = example.get("calls") or []
     kind = config["type"]
     if kind == "tool_used":
         pattern = config.get("input_match")
@@ -63,7 +72,8 @@ def grade(config, calls):
                     and (pattern is None or re.search(pattern, serialize(tool, data))))
         high = config.get("max")
         return count >= config.get("min", 1) and (high is None or count <= high)
-    found = re.search(config["pattern"], trace_of(calls), re.I if "i" in (config.get("flags") or "") else 0)
+    text = trace_of(calls) if config.get("target") == "trace" else example.get("answer", "")
+    found = re.search(config["pattern"], text, re.I if "i" in (config.get("flags") or "") else 0)
     return bool(found) == (config.get("match", "contains") != "not_contains")
 
 
@@ -90,9 +100,14 @@ for path in sorted(glob.glob(os.path.join(ROOT, "*", "graders", "*.md"))):
     check(f"{label} has an example that passes", any(e["pass"] for e in cases), "only failing examples")
     check(f"{label} has an example that fails", any(not e["pass"] for e in cases), "only passing examples")
     for example in cases:
-        got = grade(config, example["calls"])
+        got = grade(config, example)
         check(f"{label}: {example['why']}", got == example["pass"],
               f"graded {'PASS' if got else 'FAIL'}, the example says {'PASS' if example['pass'] else 'FAIL'}")
+        if not any(tool == "Edit" for tool, _ in example.get("calls") or []):
+            continue
+        got = grade(config, as_recorded(example))
+        check(f"{label}: {example['why']}, as the trace records Edit", got == example["pass"],
+              f"graded {'PASS' if got else 'FAIL'} with replace_all before file_path")
 
 print(f"\n{passes} passed, {len(failures)} failed")
 sys.exit(1 if failures else 0)

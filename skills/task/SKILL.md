@@ -47,9 +47,8 @@ The literal is the version this file shipped in (`evidence.md` &middot; *Stale k
 - **STALE SKILL**: this skill was loaded from a directory newer than the installed
   `kit`. Use `${CLAUDE_PLUGIN_ROOT}/scripts/kit` for the whole task and carry on.
 - **STALE KIT**: run the `kit setup` line it prints, then carry on.
-- **`unknown subcommand: version`**: the `kit` on PATH is older than 0.3.0. `kit setup`
-  from the newest installed copy fixes it:
-  `ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/task-funnel/*/ | sort -V | tail -1`.
+- **`unknown subcommand: version`**: a `kit` older than 0.3.0. Run `kit setup` from the
+  newest copy under `plugins/cache/*/task-funnel/`.
 - Anything else: carry on without mentioning it.
 
 ## Rules that hold for the whole funnel
@@ -178,16 +177,14 @@ Each dispatch names its agent, or it resolves to a general-purpose one without t
 | 4 | `task-funnel:funnel-verifier` | sonnet | direct, risk | refute each finding, and REAL only with a trace or a reproduction |
 | 4 | `task-funnel:funnel-screen-lens` | inherit | risk, when a screen moved | report only what you observed, and NOT PROVEN is not a pass |
 
-There is no implementer agent since 0.18.0 (`evidence.md` &middot; *The funnel,
-measured over five weeks*).
-
 ## Stage 1 · The spec
 
 ### Direct and trivial: inline
 
-Write it yourself in 3 to 5 lines: what, why, the files, and the acceptance in one
-sentence a test can check. For a bug, the acceptance is the failing test that
-reproduces it. Show it as part of the lane announcement and continue.
+Write it yourself in 3 to 5 lines: what, why, the files, the acceptance in one
+sentence a test can check, and a REVIEW FOCUS of the inputs likeliest to break it. For a bug, the acceptance is the failing test that
+reproduces it. A screen adds a SCREEN line: tokens and components reused, the sibling
+screen copied, the states that apply. Show it with the lane announcement and continue.
 
 ### Risk: the premise check
 
@@ -245,7 +242,7 @@ the bug yourself is not it: the premise check is a reader that did not write the
 spec, and a spec the user approved in the request does not skip it.
 
 ```
-kit worktree add <issue> <slug> --kind <feature|bug|refactor|chore>
+kit worktree add <issue, or 0 without one> <slug> --kind <feature|bug|refactor|chore>
 kit board in_progress --issue <issue>
 ```
 
@@ -278,8 +275,16 @@ Write the change in the worktree, against the spec.
 take the first option that holds: nothing needs to change; it already exists in this
 repo; the standard library or the platform does it; an installed dependency does it;
 only then the smallest new code, with its test. Every added line is read by every
-reviewer (`evidence.md` &middot; *Less code to read*). Never smaller than the spec: no
-criterion or invariant is cut to save lines.
+reviewer (`evidence.md` &middot; *Less code to read*). Never smaller than the spec, and
+never cut: validation at a trust boundary, data-loss handling, security, accessibility,
+the repo's structure and house components, or the tests (*The ladder's floor*).
+
+**A bug is fixed where it lives.** Before the fix, grep every caller of the function at
+fault, and the report names each by `file:line`; a defect in shared code is fixed once there, never in the caller that reported
+it (*Root cause*).
+
+**A screen moved** (a file under `.browser.screenGlobs`): read `screen.md` in this
+skill's directory before writing it, on every lane, and run `kit design`.
 
 On the risk lane, the goal is the
 test writer's tests passing **without editing them**: a test that looks wrong is a
@@ -315,8 +320,9 @@ lane, and a further `kit review` on a new head is refused (`evidence.md` &middot
 Read `review.md` in this skill's directory now. What a skipped read must not lose:
 
 - **Each printed block goes verbatim to its own `funnel-reviewer`**, plus what the
-  change is for, the acceptance criteria, what was left out, and from round 2 the
-  `ALREADY DECIDED` list. Never an instruction about what not to flag.
+  change is for, the acceptance criteria, the spec's INVARIANTS, CONSTRAINTS and REVIEW
+  FOCUS verbatim, what was left out, and from round 2 the `ALREADY DECIDED` list.
+  Never an instruction about what not to flag.
 - **The browser half runs only on the risk lane, when `kit screens --preflight` prints
   `ready`**, one screen lens at a time, with the app brought up by you.
 - **Every finding goes to `funnel-verifier`**, one dispatch per round. REAL is fixed,

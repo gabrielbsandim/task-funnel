@@ -147,10 +147,20 @@ returns elements and numbers, which is what a finding needs.
   let last = 0; const skipped = []
   for (const h of document.querySelectorAll('h1, h2, h3, h4, h5, h6')) { const n = +h.tagName[1]
     if (last && n > last + 1) skipped.push('h' + last + ' -> ' + name(h)); last = n }
+  const longLines = [], edge = [], hidden = [], small = []
+  for (const e of document.querySelectorAll('p, li, dd, blockquote')) { const r = e.getBoundingClientRect(), size = parseFloat(getComputedStyle(e).fontSize)
+    if (r.width && r.width / (size * 0.5) > 90) longLines.push(name(e) + ' ~' + Math.round(r.width / (size * 0.5)) + 'ch')
+    if (r.width && (r.left < 8 || r.right > innerWidth - 8)) edge.push(name(e) + ' at ' + Math.round(r.left) + '..' + Math.round(r.right)) }
+  for (const e of texts) { if (+getComputedStyle(e).opacity === 0 && !e.closest('[aria-hidden="true"]')) hidden.push(name(e)) }
+  for (const e of document.querySelectorAll('a[href], button, input, select, textarea, [role="button"], [role="link"]')) {
+    const r = e.getBoundingClientRect()
+    if (!r.width || e.closest('p, li') && e.tagName === 'A') continue
+    if (r.width < 24 || r.height < 24) small.push(name(e) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height)) }
   const broken = [...document.images].filter(i => i.complete && i.getAttribute('src') && !i.naturalWidth).map(i => i.getAttribute('src'))
   const cap = xs => ({ count: xs.length, first: [...new Set(xs)].slice(0, 12) })
   return { lowContrast: cap(low), nearTheBar: cap(near), overAnImage: cap(unmeasured), tinyText: cap(tiny),
-           clipped: cap(clipped), skippedHeadings: cap(skipped), brokenImages: cap(broken) }
+           clipped: cap(clipped), skippedHeadings: cap(skipped), brokenImages: cap(broken),
+           longLines: cap(longLines), textAtTheEdge: cap(edge), hiddenAtRest: cap(hidden), smallTargets: cap(small) }
 }
 ```
 
@@ -167,6 +177,14 @@ How to read it, because each list has a way to be misread:
 - **`clipped` with `(ellipsis)` is usually deliberate.** It is a finding when the
   cut text is the thing the user needs, a name or an amount, and nothing else
   shows it whole.
+- **`smallTargets` is WCAG 2.5.8**: a control under 24 by 24 CSS pixels with no
+  spacing around it. A finding on a touch viewport; a link inside a sentence is
+  exempt and already left out.
+- **`longLines` and `textAtTheEdge` are findings only for reading text**: prose over
+  about 90 characters a line, or body text touching the viewport edge at the
+  smallest width. A table cell or a code block is not reading text.
+- **`hiddenAtRest` is text at opacity 0**: content that appears only on hover never
+  appears on a phone. A finding when what it hides is needed to act.
 
 ### The rest of part 2
 

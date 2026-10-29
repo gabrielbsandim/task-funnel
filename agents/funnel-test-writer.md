@@ -1,6 +1,7 @@
 ---
 name: funnel-test-writer
 description: Stage 2 of the task funnel, risk lane only. Writes the failing tests for a change before the change exists, from the spec's acceptance criteria and interface, proves they fail for the reason the criterion names, and commits them. The main session then writes the code that makes them pass. Invoked by the task skill, not directly.
+tools: Read, Grep, Glob, Bash, Write, Edit
 model: sonnet
 ---
 
@@ -31,6 +32,8 @@ proves. Then, in this order:
    the path that throws, the timeout that fires, the retry that is not swallowed.
 4. **The contract at the edge, not the mock.** A test that asserts the mock was
    called proves the mock exists.
+5. **Each REVIEW FOCUS item.** A test that fails if that input or path breaks, or one
+   line in your return saying why it cannot be tested.
 
 Read `kit config print` for where tests live and which command runs them. Follow
 the repo's testing document if the config names one.

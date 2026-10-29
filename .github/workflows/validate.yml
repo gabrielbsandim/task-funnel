@@ -129,6 +129,17 @@ jobs:
           pip install --quiet pyyaml
           python3 tests/test-grader-examples.py
 
+      - name: Every llm eval grader has a good and a bad final answer
+        run: |
+          pip install --quiet pyyaml
+          python3 tests/grader-selftest.py
+
+      - name: The control arm reaches the agent through append_system_prompt
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          python3 tests/test-eval-control.py
+
       - name: Every skill survives the cut a compaction makes
         run: python3 tests/test-skill-size.py
 
@@ -155,6 +166,12 @@ jobs:
           git config --global user.email ci@example.com
           git config --global user.name ci
           python3 tests/test-new-code.py
+
+      - name: kit design flags interface defects only in the lines a branch adds
+        run: |
+          git config --global user.email ci@example.com
+          git config --global user.name ci
+          python3 tests/test-design.py
 
       - name: A gate receipt follows the working tree even when staging fails
         run: |

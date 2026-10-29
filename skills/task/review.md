@@ -62,6 +62,17 @@ Each finding is also tagged by **origin**: `NEW` when the diff introduced it,
 `PRE-EXISTING` when the line was already like that. A reviewer that cannot tell the
 two apart sends this change back for its neighbours' defects.
 
+### What the spec hands the reviewer
+
+The task's half of every dispatch carries the spec's INVARIANTS, CONSTRAINTS and
+REVIEW FOCUS **verbatim**, not summarised. A constraint nobody passed on is one no
+reviewer checks: in superpowers' live runs a module demanding Go 1.26.1 shipped
+against a design that said "Go 1.21+", and every implementer shipped the same crash on
+an input the spec implied but never named (`evidence.md` &middot; *What the spec hands
+the reviewer*). The reviewer answers each
+focus item by number; a `FOCUS <n> not checked` line goes to the report as a gap, never
+as a pass.
+
 ### ALREADY DECIDED
 
 From round 2 on, and on any review of a branch where the user already answered
@@ -200,6 +211,11 @@ verifying, answers `ADDRESSED` or `NOT ADDRESSED` per finding, and reports only 
 Critical or Important breakage inside the fix diff, plus one thing that is not a
 severity: **prose the fix falsified**, which it reports whatever its weight, because
 the fix introduced it (`evidence.md` &middot; *What a second round returns*).
+
+A `--since` that does not resolve, is not an ancestor of HEAD, or has nothing between
+it and HEAD is refused with exit 3 before a round is counted, and so is a first round
+whose `all` slice has no diff. A list the plan cut at its cap ends with
+`+N more, capped at K`: read that line as part of the list.
 
 **A slice the fix never touched is not dispatched.** A `--since` round prints
 `skipped` for it, and that line is the whole instruction. A reviewer at an empty diff

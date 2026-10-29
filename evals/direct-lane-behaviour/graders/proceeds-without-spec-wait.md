@@ -16,3 +16,5 @@ environment blocked, without ending on a request to approve a spec or plan.
 
 FAIL if the answer stops to ask for approval of a spec, plan or acceptance criteria
 before writing the function, or claims a branch, commit or pull request exists.
+
+Quote the line of the answer that decides the verdict.

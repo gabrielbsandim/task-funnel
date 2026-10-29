@@ -50,9 +50,19 @@ check("3 the orchestrator has a branch for SPEC-MANDATED", "tagged `SPEC-MANDATE
 check("3 the orchestrator reads a TRIPWIRE", "starting `TRIPWIRE:`" in review)
 check("3 the plan says never to write an exemption", "Never tell" in plan and "TRIPWIRE" in plan)
 
+triage = text("agents/funnel-triage.md")
+writer = text("agents/funnel-test-writer.md")
+check("5 triage returns constraints and a review focus", "CONSTRAINTS:" in triage and "REVIEW FOCUS:" in triage)
+check("5 triage looks for every caller of a bug", "grep every caller of the function at fault" in triage)
+check("5 the test writer pins each focus item", "Each REVIEW FOCUS item" in writer)
+check("5 the dispatch carries them verbatim", "INVARIANTS, CONSTRAINTS and REVIEW FOCUS **verbatim**" in review)
+check("5 the reviewer answers every focus item", "FOCUS <n> not checked" in reviewer and "Silence on a focus item is not an answer" in reviewer)
+check("5 the reviewer flags a fix made in one caller", "fixed in one caller while the shared code" in reviewer)
+
 probes = re.findall(r"```js\n(.*?)```", lens_raw, re.S)
 check("4 the screen lens carries the layout and the legibility probe", len(probes) == 2, f"{len(probes)} js blocks")
-for key in ("lowContrast", "nearTheBar", "overAnImage", "tinyText", "clipped", "skippedHeadings", "brokenImages"):
+for key in ("lowContrast", "nearTheBar", "overAnImage", "tinyText", "clipped", "skippedHeadings", "brokenImages",
+            "longLines", "textAtTheEdge", "hiddenAtRest", "smallTargets"):
     check(f"4 the legibility probe returns {key}", any(key in p for p in probes))
 check("4 the lens reads its probe instead of eyeballing", "come from the legibility probe" in " ".join(lens_raw.split()))
 node = shutil.which("node")

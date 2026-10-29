@@ -35,6 +35,8 @@ IMPORT_RE = re.compile(
 # is [[...slug]]. All three carry the parameter name in the same place.
 DYNAMIC_RE = re.compile(r"^\[{1,2}(?:\.\.\.)?([^\]]+)\]{1,2}$")
 MAX_DEPTH = 8
+DEFAULT_SCREEN_GLOBS = ["src/app/**", "src/features/**", "src/components/**"]
+DEFAULT_EXCLUDE_GLOBS = ["src/app/api/**", "*/tests/*", "*.test.*", "*.spec.*"]
 
 
 def run(args, cwd):
@@ -325,8 +327,8 @@ def main():
         sys.exit(preflight(repo_root, browser))
     app_dir = browser.get("appDir", "src/app")
     entry_names = tuple(browser.get("entryFiles") or ["page.tsx", "page.ts", "page.jsx", "page.js"])
-    globs = browser.get("screenGlobs") or ["src/app/**", "src/features/**", "src/components/**"]
-    excludes = browser.get("excludeGlobs") or ["src/app/api/**", "*/tests/*", "*.test.*", "*.spec.*"]
+    globs = browser.get("screenGlobs") or DEFAULT_SCREEN_GLOBS
+    excludes = browser.get("excludeGlobs") or DEFAULT_EXCLUDE_GLOBS
     route_params = browser.get("routeParams") or {}
     overrides = browser.get("routes") or {}
     max_routes = int(browser.get("maxRoutes", 6))

@@ -40,7 +40,7 @@ for path in sorted(glob.glob(os.path.join(ROOT, "skills", "*", "SKILL.md"))):
 
 task_dir = os.path.join(ROOT, "skills", "task")
 skill = open(os.path.join(task_dir, "SKILL.md"), encoding="utf-8").read()
-for ref in ("review.md", "ship.md", "evidence.md"):
+for ref in ("review.md", "ship.md", "evidence.md", "screen.md"):
     check(f"2 SKILL.md names {ref}", f"`{ref}`" in skill, "the pointer is gone")
     check(f"2 {ref} exists", os.path.isfile(os.path.join(task_dir, ref)), "the file is gone")
 
@@ -50,6 +50,15 @@ ship = open(os.path.join(task_dir, "ship.md"), encoding="utf-8").read()
 for literal in ("## Stage 5", "## Stage 6", "kit gate ship", "kit pr-body", "<!-- funnel: risk -->",
                 "kit board in_review", "kit worktree gc --yes", "kit context", "600 characters"):
     check(f"3 ship.md keeps {literal!r}", literal in ship, "a rule fell out in the move")
+
+flat = " ".join(skill.split())
+for literal in ("grep every caller of the function at fault", "never cut: validation at a trust boundary",
+                "read `screen.md` in this skill's directory before writing it", "kit design"):
+    check(f"4 SKILL.md keeps {literal!r}", literal in flat, "a stage 3 rule is gone")
+screen = " ".join(open(os.path.join(task_dir, "screen.md"), encoding="utf-8").read().split())
+for literal in ("loading, empty and error", "prefers-reduced-motion", ":focus-visible", "never OK, Yes, Submit",
+                "who decided:"):
+    check(f"4 screen.md keeps {literal!r}", literal in screen, "a screen rule is gone")
 
 print(f"\n{passes} passed, {len(failures)} failed")
 sys.exit(1 if failures else 0)

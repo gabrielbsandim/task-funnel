@@ -399,6 +399,24 @@
         }
       }
     },
+    "ui": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "What `kit design` holds the added screen lines to. It scans files under browser.screenGlobs, with or without a browser lens.",
+      "properties": {
+        "tokens": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Files whose CSS custom properties are the design tokens. A colour within 6 per channel or a px length within 0.5px of a token, or equal to one, is an off-token finding. Unset, off-token does not run."
+        },
+        "detectCmd": {
+          "type": "string",
+          "description": "A further detector, run from the repo root; its output (JSON when it parses) is appended to the report. A missing or failing command never fails `kit design`."
+        }
+      }
+    },
     "maxParallelAgents": {
       "type": "integer",
       "minimum": 1,

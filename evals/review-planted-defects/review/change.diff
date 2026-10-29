@@ -1,0 +1,57 @@
+diff --git a/src/fechamento.test.ts b/src/fechamento.test.ts
+new file mode 100644
+index 0000000..29c4df9
+--- /dev/null
++++ b/src/fechamento.test.ts
+@@ -0,0 +1,17 @@
++import { describe, expect, it, vi } from "vitest";
++import { fecharMes } from "./fechamento";
++
++const aprovada = (id: string, valor: string) => ({
++  id,
++  status: "aprovada" as const,
++  valorMedido: valor,
++  valorPago: valor,
++});
++
++describe("fecharMes", () => {
++  it("salva o fechamento do mes com o total pago", () => {
++    const salvar = vi.fn();
++    fecharMes(2026, 2, [aprovada("m1", "850,40"), aprovada("m2", "120,30")], salvar);
++    expect(salvar).toHaveBeenCalled();
++  });
++});
+diff --git a/src/fechamento.ts b/src/fechamento.ts
+new file mode 100644
+index 0000000..0126867
+--- /dev/null
++++ b/src/fechamento.ts
+@@ -0,0 +1,28 @@
++import { toMedicao, type MedicaoInput } from "./medicao";
++
++export interface Fechamento {
++  inicio: Date;
++  fim: Date;
++  totalPago: number;
++}
++
++export function periodo(ano: number, mes: number): { inicio: Date; fim: Date } {
++  return { inicio: new Date(ano, mes - 1, 1), fim: new Date(ano, mes, 0) };
++}
++
++export function totalPago(inputs: MedicaoInput[]): number {
++  return inputs.map(toMedicao).reduce((total, m) => total + Math.round(m.valorPago), 0);
++}
++
++export function fecharMes(
++  ano: number,
++  mes: number,
++  inputs: MedicaoInput[],
++  salvar: (fechamento: Fechamento) => void,
++): Fechamento {
++  const fechamento = { ...periodo(ano, mes), totalPago: totalPago(inputs) };
++  try {
++    salvar(fechamento);
++  } catch {}
++  return fechamento;
++}

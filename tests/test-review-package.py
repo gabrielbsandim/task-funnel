@@ -121,13 +121,31 @@ try:
     # orchestrator gets: "skipped" with no name is a line nobody can act on.
     check("2 the skip names the slice", 'slice "tests"' in out, out)
 
-    # A fix that touched nothing at all sends nobody, rather than sending three
-    # agents to confirm it.
+    # A fix that touched nothing at all is refused, rather than counted as a round
+    # that sends nobody.
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
                           capture_output=True, text=True).stdout.strip()
-    out = run(root, "--dispatches", "standard", "--since", head)
-    check("3 an empty fix round dispatches nobody", dispatched(out) == [], out)
-    check("3 and says so", "0 dispatch(es)" in out, out)
+    out = raw(root, "--dispatches", "standard", "--since", head, "--reset-rounds")
+    check("3 an empty fix round is refused with exit 3", out.returncode == 3, out.stdout + out.stderr)
+    check("3 and says why in one line", out.stderr.strip().count("\n") == 0
+          and "nothing changed" in out.stderr, out.stderr)
+    check("3 and dispatches nobody", dispatched(out.stdout) == [], out.stdout)
+
+    # 3d. A --since that is not a commit, or not on this branch, is not a fix range.
+    out = raw(root, "--dispatches", "standard", "--since", "deadbeef", "--reset-rounds")
+    check("3d an unresolvable --since exits 3", out.returncode == 3 and "does not resolve" in out.stderr,
+          out.stdout + out.stderr)
+    git(root, "switch", "-q", "-c", "elsewhere", "main")
+    write(root, "src/other.ts", "export const other = 1\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "off the branch")
+    stray = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                           capture_output=True, text=True).stdout.strip()
+    git(root, "switch", "-q", "main")
+    git(root, "branch", "-q", "-D", "elsewhere")
+    out = raw(root, "--dispatches", "standard", "--since", stray, "--reset-rounds")
+    check("3d a --since that is not an ancestor exits 3",
+          out.returncode == 3 and "not an ancestor" in out.stderr, out.stdout + out.stderr)
 
     # 3b. A claims lens whose grep candidates match nothing still prints a complete
     #     plan. Found by this file: under `set -o pipefail` the grep's exit 1 became
@@ -199,6 +217,8 @@ try:
     #     every other lens follows.
     head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
                           capture_output=True, text=True).stdout.strip()
+    write(root, "docs/readme.md", "the number is 41, and still is\n")
+    git(root, "commit", "-q", "-am", "prose only")
     out = run(root, "--dispatches", "standard", "--since", head)
     check("5c an untouched fix round does not dispatch it",
           not any("consequences" in g for g in dispatched(out)), out)
@@ -433,6 +453,96 @@ try:
     out = run(root, "consequences")
     check("12 names nobody calls are named, so the claim can be checked",
           "none matched: nothing outside the diff references lonelyThing" in callers(out), out)
+finally:
+    shutil.rmtree(root, ignore_errors=True)
+
+# 13. Every cap says when it cut, a refusal claims no round, and prose naming a file
+#     the change deleted or renamed is a claims candidate.
+root = tempfile.mkdtemp(prefix="kit-caps-")
+try:
+    cfg = {
+        "base": "main",
+        "slices": {"src": "origin/main...HEAD -- src", "all": "origin/main...HEAD"},
+        "lenses": {"claims": {"slice": "all", "docs": [], "grepTargets": ["docs"]},
+                   "consequences": {"slice": "src", "docs": [], "readsOutsideDiff": True,
+                                    "codeTargets": ["src", "app"]}},
+        "effort": {"standard": ["claims", "consequences"]},
+        "maxRounds": 9,
+        "maxParallelAgents": 2,
+    }
+    git(root, "init", "-q", "-b", "main")
+    git(root, "config", "user.email", "t@t")
+    git(root, "config", "user.name", "t")
+    write(root, ".claude/funnel.config.json", json.dumps(cfg))
+    write(root, "docs/README.md", "See src/legacy-widget.ts for the widget.\n"
+          "The old-gadget module parses input.\n")
+    write(root, "src/legacy-widget.ts", "hello\n")
+    write(root, "src/old-gadget.ts", "some content that moves unchanged\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "base")
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+
+    gitdir = subprocess.run(["git", "rev-parse", "--absolute-git-dir"], cwd=root,
+                            capture_output=True, text=True).stdout.strip()
+    rounds = os.path.join(gitdir, "claude-kit", "review", "rounds.main")
+
+    def head_of():
+        return subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                              capture_output=True, text=True).stdout.strip()
+
+    def claimed():
+        return os.path.exists(rounds) and head_of() in open(rounds).read().split()
+
+    out = raw(root, "--dispatches", "standard")
+    check("13 a first round with no diff exits 3", out.returncode == 3, out.stdout + out.stderr)
+    check("13 and says so in one line", "has no diff" in out.stderr
+          and out.stderr.strip().count("\n") == 0, out.stderr)
+    check("13 and claims no round", not claimed(), rounds)
+
+    git(root, "rm", "-q", "src/legacy-widget.ts")
+    git(root, "mv", "src/old-gadget.ts", "src/new-gadget.ts")
+    write(root, "src/a.ts", "export const alpha = 1\n")
+    for i in range(30):
+        write(root, f"app/use{i:02d}.ts", f"import {{ name{i:02d} }} from '../src/f{i:02d}'\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "delete and rename")
+    out = raw(root, "--dispatches", "standard", "--since", "nope")
+    check("13 a refused --since claims no round", out.returncode == 3 and not claimed(),
+          out.stdout + out.stderr)
+
+    out = raw(root, "--dispatches", "standard")
+    check("13 the plan runs", out.returncode == 0, out.stdout + out.stderr)
+    check("13 prose naming a deleted path is a claims candidate",
+          "docs/README.md:1:See src/legacy-widget.ts" in out.stdout, out.stdout)
+    check("13 prose naming a renamed file's stem is a claims candidate",
+          "docs/README.md:2:The old-gadget module" in out.stdout, out.stdout)
+    check("13 an uncut list prints no cap line", "more, capped at" not in out.stdout, out.stdout)
+    out = raw(root, "claims")
+    check("13 the claims lens alone sees the deleted path too",
+          "src/legacy-widget.ts" in out.stdout, out.stdout + out.stderr)
+
+    git(root, "update-ref", "refs/remotes/origin/main", "HEAD")
+    notes = []
+    for i in range(35):
+        write(root, f"src/f{i:02d}.ts", f"export const name{i:02d} = 1{i:02d}\n")
+        notes += [f"1{i:02d} line {k}" for k in range(6)]
+    write(root, "docs/notes.md", "\n".join(notes) + "\n")
+    git(root, "add", "-A")
+    git(root, "commit", "-q", "-m", "many")
+    out = raw(root, "--dispatches", "standard", "--reset-rounds")
+    text = out.stdout + out.stderr
+    check("13 a cut file list says how many it dropped",
+          "+10 more, capped at 25 files, ranked by lines changed" in text, text)
+    check("13 a cut caller list says how many it dropped",
+          "+5 more, capped at 25 files, ranked by how many" in text, text)
+    check("13 a cut name list says its callers were not searched",
+          "+5 more, capped at 30 declaration names" in text, text)
+    check("13 a cut token list says that prose was not searched",
+          re.search(r"\+\d+ more, capped at 40 tokens", text) is not None, text)
+    check("13 a cut candidate list says how many lines it dropped",
+          re.search(r"\+\d+ more, capped at 60 candidate lines", text) is not None, text)
+    check("13 a per-token cut says so",
+          re.search(r"\+\d+ more, capped at 4 matching lines per token", text) is not None, text)
 finally:
     shutil.rmtree(root, ignore_errors=True)
 

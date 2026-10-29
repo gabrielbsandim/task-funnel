@@ -36,6 +36,24 @@ not separate: the model already finds the bug, reads the gate scripts and refuse
 push on its own. In the short-lane case `task` fired in only some runs, so a request to
 "fix and leave ready for a PR" often bypasses the funnel.
 
+Three cases were added on 2026-10-28, each with its own scaffold:
+
+- `root-cause-two-callers` reports a symptom in one caller ("Aco: 1.5 kg" for
+  "1.500,00") of a shared `parseNumero` that a second file, `src/painel.ts`, also calls.
+  It grades that the fix lands once in `src/format/numero.ts`, that no caller converts
+  the text itself, that the second caller was searched or opened before the first
+  change, and that the answer names the second caller.
+- `ui-direct-lane` asks for a new list screen with a delete action and a short exit
+  transition, under `browser.screenGlobs`. The sibling screen it should copy shows the
+  empty state when a fetch fails, so copying it misses the states floor. It grades
+  tokens over literals, the house `Button` and `EmptyState`, a reduced-motion path, a
+  focus style, no gradient text, a confirm named after the action rather than OK or
+  `window.confirm`, and loading, empty and error as separate states.
+- `ladder-keeps-validation` asks for "the least code" to record a quantity sent by the
+  client. It grades that `parseQuantidade` is reused and not rewritten, that invalid
+  values are rejected before the write, that a test sends a quantity, and that no
+  existing test is deleted.
+
 ## Lanes
 
 The fixture's config puts `src/money.ts` and `src/medicao.ts` on `risk.paths`, so
@@ -119,8 +137,9 @@ read-only, so before this run no case could edit anything and the risk cases wer
 measuring the sandbox. Even with them, the git directory stays read-only wherever it
 lives (a `--separate-git-dir` was tried), and no case field or flag changes that. So
 no case can grade a branch, a commit, a push or the review that reads a commit: the
-direct lane is graded up to its gates, and its single verified review round is not
-covered by any eval.
+direct lane is graded up to its gates, and its single verified review round is graded
+by `review-planted-defects` on the answer only, not on whether the verifier was
+dispatched.
 
 Bash cannot write to the repository either, even with `Write` granted: one direct run
 probed with `touch src/.probe`, concluded the whole repository was read-only, and
@@ -137,6 +156,85 @@ same, and the README says so.
 The plugin finds `kit` beside its own skill (`${CLAUDE_PLUGIN_ROOT}/scripts/kit`) when
 the one on PATH is missing or unreadable. Before that fallback, `kit` never ran inside
 an eval, so the runs of 2026-10-19 measured the skill's prose and not the script.
+
+### 2026-10-29: tiers 1 to 3, old against new
+
+`7606762` against this branch on the four new cases and the two the change could move,
+plus the bare arm and the control (the five rules of `_fixture/control.md` as the
+system prompt, no plugin). Two runs per arm, scores without the plugin-only
+`task-fired`, US$ 13.92 in all for the valid runs.
+
+| Case | 7606762 | Branch | Bare | Control |
+|---|---|---|---|---|
+| `ui-direct-lane` | 0.82 | 1.00 | 0.85 | 0.82 |
+| `spec-before-code` | 1.00 | 1.00 | 0.33 | 1.00 |
+| `root-cause-two-callers` | 1.00 | 0.88 | 1.00 | 0.88 |
+| `review-planted-defects` | 0.32 | 0.41 | 0.36 | 0.64 |
+| `ladder-keeps-validation`, `over-build` | 1.00 | 1.00 | 1.00 | 1.00 |
+
+`ui-direct-lane` is the one the branch moved, and only on `destructive-confirm`: every
+other arm deleted on the first click or behind `window.confirm`, and the branch, which
+reads `screen.md`, asked first with a button named after the action in 2 of 2 runs.
+`spec-before-code` separates the plugin from the bare model and not from the control,
+so on that case five lines of rules buy what the plugin does. `root-cause-two-callers`
+and `ladder-keeps-validation` are passed by every arm: on a three-file fixture the model
+reads every caller anyway. `review-planted-defects` asked in the main session reviews
+there, without the reviewer agent, so every arm obeyed the "skip error handling"
+tripwire, missed the swallowed save, and most reported the decoy. The tripwire rule
+lives in `funnel-reviewer.md` and does not reach a review the main session does itself.
+The canary scored 0.50 with the plugin and 1.00 without, as an isolated run should
+(US$ 0.13).
+
+Three things this run caught in the suite before it could be believed:
+
+- **A copy of the plugin inside the repository is loaded instead of the repository.**
+  The old version sat in a worktree under `.wt/`, and every "branch" run loaded
+  `.wt/a/skills/task`, which the skill's `Base directory` line in the trace showed. Put
+  the old version outside the plugin's directory (`git archive <sha>`), never under it.
+- **A real trace writes `"replace_all":false` before `file_path` in an Edit.** Fifteen
+  graders anchored on `file_path` as the first key, so every "edit contains" grader
+  failed and every "edit does not contain" grader passed without looking.
+  `tests/test-grader-examples.py` now replays each Edit example in that order too.
+- **`grep-callers-first` graded a ritual.** The model read every file with one
+  `cat src/*.ts` loop and saw both callers without a grep. It is now
+  `saw-second-caller-first`: a grep, or the second caller opened, before the first change.
+
+### 2026-10-29: a review skill, a triage budget, and where it started
+
+`e69f8de`, the version before the essences, against the same six cases, plus the two
+changes this section adds. Two runs each, score / mean US$ per run, US$ 7.20 in all.
+The current column reuses the branch runs above for the four cases neither change
+touches.
+
+| Case | e69f8de | 7606762 | Current | Bare | Control |
+|---|---|---|---|---|---|
+| `ui-direct-lane` | 0.88 / 0.54 | 0.82 / 0.63 | 1.00 / 0.65 | 0.85 / 0.25 | 0.82 / 0.26 |
+| `spec-before-code` | 1.00 / 0.51 | 1.00 / 0.49 | 1.00 / 0.39 | 0.33 / 0.18 | 1.00 / 0.13 |
+| `root-cause-two-callers` | 1.00 / 0.42 | 1.00 / 0.29 | 1.00 / 0.31 | 1.00 / 0.17 | 0.88 / 0.17 |
+| `review-planted-defects` | 0.41 / 0.18 | 0.32 / 0.17 | 1.00 / 0.16 | 0.36 / 0.16 | 0.64 / 0.16 |
+| `ladder-keeps-validation` | 0.61 / 0.47 | 1.00 / 0.47 | 1.00 / 0.57 | 1.00 / 0.18 | 1.00 / 0.19 |
+| `over-build` | 1.00 / 0.28 | 1.00 / 0.27 | 1.00 / 0.27 | 1.00 / 0.16 | 1.00 / 0.16 |
+
+- **`skills/review`.** A review asked of the main session loaded nothing from the
+  plugin, so the reviewer's rubric never reached it. The skill carries it inline, plus
+  one step the reviewer leaves to the verifier: compute each candidate for a concrete
+  input before writing it. Both runs found all three planted defects, left the decoy
+  out and reported the swallowed save while naming the instruction it set aside.
+- **A 4000 character budget on the triage return.** A trace of `spec-before-code`
+  had triage return 12,707 characters in 7,036 output tokens, about half of its cost,
+  and the session then paid for them again as context. Budgeted, the returns measured
+  4,852 and 4,484 characters in 2,612 and 2,254 tokens.
+- **What a direct task pays for the plugin, read off one trace.** Loading `SKILL.md` is
+  about 7k tokens written to the cache and re-read every turn, and the pre-flight and
+  worktree calls are three or four turns the bare arm does not take. Splitting the
+  skill further was costed and dropped: on a ten-turn task the bytes saved are worth
+  less than the extra turn that reads the side file.
+- **`root-cause-two-callers` at 0.88 was the judge.** The failing run fixed
+  `parseNumero` once and named `totalPorMaterial` of the dashboard, and the judge voted
+  FAIL PASS FAIL, likely on the blocked steps and the out-of-scope note around it. The
+  answer is now a PASS example in `_llm-grader-examples.json`, the grader says a
+  mention in passing counts, and the report names each caller by `file:line`. Four
+  reruns: 1.00 each, every vote PASS, US$ 0.31 per run.
 
 What was verified: every frontmatter key against the allowed set for `prompt.md`,
 `case.yaml` and each grader type, by `tests/check-eval-schema.py`, which runs in CI.
@@ -177,6 +275,46 @@ kit eval-delta evals/results/*.json --min 0.1  # exit 3 when the mean delta is b
 
 On the runs above the mean delta is +0.08 and 3 of 7 cases separate the arms by
 0.10 or more.
+
+## The review, the judge and the arms
+
+`review-planted-defects` covers the single verified review round. The scaffold commits
+`review/change.diff` before the sandbox makes `.git` read-only. The diff plants three
+defects: `totalPago` rounds each value before the sum, so "850,40" and "120,30" total
+970; an empty `catch` hides a failed `salvar`; the only test asserts
+`toHaveBeenCalled()`. It also carries a decoy that looks like an off-by-one and is
+correct (`new Date(ano, mes, 0)`), and a tripwire: the user asks to skip error
+handling, which would hide the second defect. Six llm graders read the final answer in
+both arms: one per defect, the decoy not reported, the tripwire named rather than
+obeyed, and nothing below Important.
+
+A judge is a grader too. `tests/grader-selftest.py` checks, free and in CI, that every
+llm grader has a good and a bad example in `evals/_llm-grader-examples.json` (the
+file's text, for a grader that reads a file) and asks the judge to quote the line that
+decides the verdict. `--run` grades each example with `claude -p --model haiku` and
+fails when a good one is judged FAIL or a bad one PASS. Run it after changing a
+grader's criteria, before paying for the suite.
+
+`arm-isolation-canary` (`--tag canary`, one run, run it alone) asks for the model's
+skills, agents, output style and any rule about em dashes or report length. `arm`
+cannot target the bare arm, so the case is read by its delta: an isolated run scores
+0.50 with the plugin, 1.00 without, delta -0.50. A delta of 0 means one arm carries the
+wrong thing. Today the harness disables CLAUDE.md in every run, and the canary catches
+a version where that changes.
+
+The control arm asks whether the plugin beats its rules as five lines. The harness
+never shows the agent a CLAUDE.md and passes the scaffold no caller variable, so
+`FUNNEL_CONTROL=1` only serves `tests/e2e-lanes.sh` and manual builds. For the eval,
+`kit eval-control build` copies the suite into `evals-control/` with the rules in each
+case's `append_system_prompt`; the bare arm of that run is the control. That sits in
+the system prompt, close to a CLAUDE.md but not identical.
+
+```sh
+kit eval-control build
+claude plugin eval . --eval-dir evals-control --tag outcome --scaffold --allow-tools Bash Write Edit --ablation with-without --json evals/results/control.json
+kit eval-control merge evals/results/run.json evals/results/control.json > evals/results/vs-control.json
+kit eval-delta evals/results/vs-control.json
+```
 
 ## Growing the suite from real escapes
 

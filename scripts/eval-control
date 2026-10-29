@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""The control arm: does the plugin beat its own five rules written as a plain CLAUDE.md?
+
+    kit eval-control build                          writes evals-control/ from evals/
+    kit eval-control merge <plugin.json> <control.json>   prints a run file eval-delta reads
+
+`claude plugin eval` runs two arms, with the plugin and without, never a third. Every
+agent run gets CLAUDE_CODE_DISABLE_CLAUDE_MDS=1 and the scaffold gets no caller
+variable (checked in Claude Code 2.1.312), so a CLAUDE.md in the fixture is never read.
+`build` copies the suite into a sibling directory and puts evals/_fixture/control.md in
+every case's `append_system_prompt`, which the harness does pass, and leaves a marker
+that makes the fixture write the same five lines as CLAUDE.md. The without arm of a run
+on that copy is the control. `merge` pairs it with the plugin arm of an ordinary run.
+"""
+import json
+import os
+import re
+import shutil
+import sys
+
+SOURCE, TARGET = "evals", "evals-control"
+FRONTMATTER = re.compile(r"\A---\n(.*?\n)---\n", re.S)
+
+
+def build(root):
+    src, dst = os.path.join(root, SOURCE), os.path.join(root, TARGET)
+    if not os.path.isdir(src):
+        sys.exit(f"no {SOURCE}/ under {root}: run this from the plugin's root")
+    rules = open(os.path.join(src, "_fixture", "control.md"), encoding="utf8").read().strip()
+    shutil.rmtree(dst, ignore_errors=True)
+    shutil.copytree(src, dst, ignore=shutil.ignore_patterns("results"))
+    open(os.path.join(dst, "_fixture", "control-on"), "w").close()
+    problems, done = [], 0
+    for case in sorted(os.listdir(dst)):
+        base = os.path.join(dst, case)
+        if case.startswith("_") or not os.path.isdir(base):
+            continue
+        prompt = os.path.join(base, "prompt.md")
+        if not os.path.exists(prompt):
+            problems.append(f"{case}: no prompt.md to carry append_system_prompt")
+            continue
+        text = open(prompt, encoding="utf8").read()
+        match = FRONTMATTER.match(text)
+        if not match:
+            problems.append(f"{case}/prompt.md: no frontmatter")
+            continue
+        if re.search(r"^append_system_prompt:", match.group(1), re.M):
+            problems.append(f"{case}/prompt.md: already sets append_system_prompt")
+            continue
+        head = match.group(1) + f"append_system_prompt: {json.dumps(rules, ensure_ascii=False)}\n"
+        with open(prompt, "w", encoding="utf8") as fh:
+            fh.write(f"---\n{head}---\n{text[match.end():]}")
+        done += 1
+    for problem in problems:
+        print(f"FAIL  {problem}", file=sys.stderr)
+    if problems:
+        return 1
+    print(f"{done} case(s) in {TARGET}/ carry the control rules. Run, from {root}:")
+    print(f"  claude plugin eval . --eval-dir {TARGET} --tag outcome --scaffold "
+          "--allow-tools Bash Write Edit --ablation with-without --json evals/results/control.json")
+    return 0
+
+
+def merge(plugin_path, control_path):
+    plugin = json.load(open(plugin_path, encoding="utf8"))
+    control = {c["name"]: c for c in json.load(open(control_path, encoding="utf8")).get("cases") or []}
+    cases = []
+    for case in plugin.get("cases") or []:
+        other = (control.get(case["name"]) or {}).get("arms") or {}
+        cases.append({"name": case["name"], "arms": {"with": (case.get("arms") or {}).get("with") or [],
+                                                     "without": other.get("without") or []}})
+    json.dump({"cases": cases}, sys.stdout, indent=1)
+    print()
+    return 0
+
+
+def main(argv):
+    if argv[:1] == ["build"]:
+        root = argv[argv.index("--root") + 1] if "--root" in argv else os.getcwd()
+        return build(os.path.abspath(root))
+    if argv[:1] == ["merge"] and len(argv) == 3:
+        return merge(argv[1], argv[2])
+    sys.exit("usage: kit eval-control build [--root DIR] | merge <plugin-run.json> <control-run.json>")
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

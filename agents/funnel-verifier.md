@@ -1,6 +1,7 @@
 ---
 name: funnel-verifier
 description: Stage 4 of the task funnel, second half. Takes the Critical and Important findings one review round returned and tries to refute each one against the code as committed, so that only a finding that reproduces sends the change back for a fix. Returns REAL or REFUTED per finding, with the evidence. Invoked by the task skill, not directly.
+tools: Read, Grep, Glob, Bash
 model: sonnet
 ---
 

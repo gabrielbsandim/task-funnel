@@ -19,10 +19,12 @@
 #   kit export-skill <name>    package a skill to run outside this plugin
 #   kit comments               comment problems in the lines this branch adds
 #   kit ratchet --config F     ESLint violations this branch adds, not inherits
+#   kit design [--json]        interface defects a static read catches in the UI lines added
 #   kit context                how full the context is, and whether to compact
 #   kit env-access [open|guarded]  whether the agent may read this repo's .env*
 #   kit escapes                merged pull requests a later fix had to correct, by lane
 #   kit eval-delta <run.json>  the eval score with the plugin minus the score without
+#   kit eval-control build     the eval suite again, with the funnel's five rules prepended
 #   kit usage                  what the main loop spent, and what the agents spent
 #   kit doctor                 is this machine ready
 #   kit version [expected]     which copy is running, and whether it is the newest
@@ -69,10 +71,12 @@ case "$cmd" in
     exec "$KIT_BIN/pr-body" --max 1000 --section-max 350 "$@" ;;
   comments) exec "$KIT_BIN/new-code" comments "$@" ;;
   ratchet)  exec "$KIT_BIN/new-code" ratchet "$@" ;;
+  design)   exec "$KIT_BIN/design" "$@" ;;
   context)  exec "$KIT_BIN/context" "$@" ;;
   env-access) exec "$KIT_BIN/env-access" "$@" ;;
   escapes)  exec "$KIT_BIN/escapes" "$@" ;;
   eval-delta) exec "$KIT_BIN/eval-delta" "$@" ;;
+  eval-control) exec "$KIT_BIN/eval-control" "$@" ;;
   usage)    exec "$KIT_BIN/usage" "$@" ;;
   worktree) exec "$KIT_BIN/worktree" "$@" ;;
   board)    exec "$KIT_BIN/board-move" "$@" ;;

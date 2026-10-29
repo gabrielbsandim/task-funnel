@@ -1,0 +1,612 @@
+#!/usr/bin/env python3
+"""Interface defects a static read can catch, in the screen lines this branch adds.
+
+    kit design [--base REF] [--json]
+
+The direct lane sends no browser lens, so this is the only look its screens get.
+Rules, with impeccable's detector thresholds where it has one: gradient-text,
+side-tab, bounce-easing, tiny-text, tight-leading, wide-tracking, off-token, img-alt,
+outline-none and motion-no-reduce. Only added lines in files under browser.screenGlobs
+are judged, the diff `kit comments` reads, so an inherited defect never fails a
+change. outline-none and motion-no-reduce then read the whole file for the remedy.
+
+`design-ignore: <rule> who decided: <evidence>` on the line or the line above
+silences that rule there. Config: ui.tokens lists the files whose CSS custom
+properties are the design tokens (off-token is skipped without it), and ui.detectCmd
+is a further detector whose output is appended and never decides the exit code.
+"""
+
+import argparse
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import subprocess
+import sys
+
+BIN_DIR = os.path.dirname(os.path.abspath(__file__))
+sys.dont_write_bytecode = True
+
+
+def load(name, file):
+    loader = importlib.machinery.SourceFileLoader(name, os.path.join(BIN_DIR, file))
+    module = importlib.util.module_from_spec(importlib.util.spec_from_loader(name, loader))
+    loader.exec_module(module)
+    return module
+
+
+new_code = load("new_code", "new-code")
+screen_routes = load("screen_routes", "screen-routes")
+
+EXTS = {".css", ".scss", ".tsx", ".jsx", ".vue", ".svelte", ".html"}
+RULE_IDS = ("gradient-text", "side-tab", "bounce-easing", "tiny-text", "tight-leading",
+            "wide-tracking", "off-token", "img-alt", "outline-none", "motion-no-reduce",
+            "token-to-silence")
+TOK = r"(?<![\w-])"
+END = r"(?![\w-])"
+
+CLIP_TEXT = re.compile(r"(?:-webkit-)?background-clip\s*:\s*text|backgroundClip\s*:\s*[\"'`]text", re.I)
+TW_CLIP_TEXT = re.compile(TOK + r"bg-clip-text" + END)
+TW_GRADIENT = re.compile(TOK + r"bg-(?:gradient-to-|linear-|radial|conic)")
+
+TW_SIDE = re.compile(TOK + r"border-[lrse]-(\d+)" + END)
+CSS_SIDE = re.compile(r"border-(?:left|right|inline-start|inline-end)\s*:\s*(\d+)px\s+solid([^;\"'`}]*)", re.I)
+CSS_SIDE_WIDTH = re.compile(r"border-(?:left|right|inline-start|inline-end)-width\s*:\s*(\d+)px", re.I)
+JS_SIDE = re.compile(r"border(?:Left|Right)\s*[:=]\s*[\"'`](\d+)px\s+solid([^\"'`]*)")
+SAFE_ELEMENT = re.compile(r"<(?:blockquote|nav|pre|code|a|input|span)[\s>]", re.I)
+ROUNDED = re.compile(TOK + r"rounded(?:-[\w\[\].]+)?" + END)
+NEUTRAL_WORDS = {"transparent", "currentcolor", "black", "white", "gray", "grey", "silver", "dimgray",
+                 "dimgrey", "darkgray", "darkgrey", "lightgray", "lightgrey", "gainsboro", "whitesmoke"}
+
+TW_BOUNCE = re.compile(TOK + r"animate-bounce" + END)
+ANIM_BOUNCE = re.compile(r"animation(?:-name)?\s*:\s*([^;{}]*(?:bounce|elastic|wobble|jiggle|spring)[^;{}]*)", re.I)
+EASE_NAME = re.compile(r"\b(?:ease(?:In|Out|InOut)(?:Bounce|Elastic)|(?:bounce|elastic)\.(?:in|out|inOut))\b")
+CUBIC = re.compile(r"cubic-bezier\(\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*,\s*([\d.-]+)\s*\)")
+
+FONT_SIZE = re.compile(r"font-size\s*:\s*([\d.]+)(px|rem)\b", re.I)
+JS_FONT_SIZE = re.compile(r"fontSize\s*:\s*(?:([\d.]+)()\s*[,}]|[\"'`]([\d.]+)(px|rem)[\"'`])")
+TW_SIZE = re.compile(TOK + r"text-\[([\d.]+)(px|rem)\]")
+TW_NAMED_SIZE = re.compile(TOK + r"text-(xs|sm|base|lg|xl|[2-9]xl)" + END)
+TW_PX = {"xs": 12, "sm": 14, "base": 16, "lg": 18, "xl": 20, "2xl": 24, "3xl": 30, "4xl": 36,
+         "5xl": 48, "6xl": 60, "7xl": 72, "8xl": 96, "9xl": 128}
+CONTROL_TAG = re.compile(r"<(?:button|a|input|select|textarea|label|summary|option|Button|Link)\b|"
+                         r"role=[\"'](?:button|link|tab|menuitem)")
+CONTROL_SEL = re.compile(r"(?:^|[\s,>+~(])(?:button|input|select|textarea|label|a)(?=[\s,:.\[>)]|$)|"
+                         r"\.btn\b|:hover|:focus", re.I)
+SUB_SUP = re.compile(r"<su[bp]\b|(?:^|[\s,>+~])su[bp]\b", re.I)
+CODE_TAG = re.compile(r"<(?:code|kbd|samp|caption|figcaption)\b|(?:^|[\s,>+~])(?:code|kbd|samp|caption|figcaption)\b")
+
+LINE_HEIGHT = re.compile(r"line-height\s*:\s*([\d.]+)(px|rem|em|%)?\s*(?=[;!}\"'`]|$)", re.I)
+JS_LINE_HEIGHT = re.compile(r"lineHeight\s*:\s*([\d.]+)\s*(?=[,}]|$)")
+TW_LEADING = re.compile(TOK + r"leading-(none|tight|\[[\d.]+\])" + END)
+TW_LEADING_RATIO = {"none": 1.0, "tight": 1.25}
+HEADING = re.compile(r"<h[1-6]\b|(?:^|[\s,>+~])h[1-6]\b", re.I)
+BODY_TAG = re.compile(r"<(?:p|li|td|dd|blockquote|article)\b")
+BODY_SEL = re.compile(r"(?:^|[\s,>+~])(?:p|li|td|dd|blockquote|article|body)\b|\.prose\b")
+BOLD = re.compile(r"font-weight\s*:\s*(?:[6-9]00|bold|bolder)|fontWeight\s*:\s*[\"'`]?(?:[6-9]00|bold)|"
+                  + TOK + r"font-(?:semibold|bold|extrabold|black)" + END, re.I)
+
+LETTER = re.compile(r"letter-spacing\s*:\s*(-?[\d.]+)(em|px|rem)\b", re.I)
+JS_LETTER = re.compile(r"letterSpacing\s*:\s*[\"'`](-?[\d.]+)(em|px|rem)[\"'`]")
+TW_TRACKING = re.compile(TOK + r"tracking-(widest|\[(-?[\d.]+)(em|px|rem)\])" + END)
+
+IMG = re.compile(r"<img(?=[\s/>])", re.I)
+OUTLINE = re.compile(r"outline\s*:\s*[\"'`]?(?:none|0)\b|" + TOK + r"outline-(?:none|0)" + END, re.I)
+FOCUS_VISIBLE = re.compile(r"focus-visible", re.I)
+MOTION = re.compile(r"(?:transition|animation)(?:-[a-z-]+)?\s*:\s*(?!none\b)[^;}\"'`]+|@keyframes\b|"
+                    + TOK + r"(?:transition(?:-(?:all|colors|opacity|shadow|transform))?|animate-(?!none\b)[a-z][\w-]*)"
+                    + END + r"(?!\s*:)", re.I)
+REDUCE = re.compile(r"prefers-reduced-motion|motion-reduce:|motion-safe:|useReducedMotion|MotionConfig", re.I)
+
+HEX = r"(?<![&\w])#(?:[0-9a-fA-F]{8}|[0-9a-fA-F]{6}|[0-9a-fA-F]{3,4})\b"
+COLOR = re.compile(HEX + r"|rgba?\([^)]*\)", re.I)
+PX = re.compile(r"(?<![\w.#-])(\d+(?:\.\d+)?)px\b")
+VAR_CALL = re.compile(r"var\([^)]*\)")
+TOKEN_DEF = re.compile(r"(--[\w-]+)\s*:\s*([^;}]+)")
+LENGTH = re.compile(r"(\d+(?:\.\d+)?)(px|rem)")
+
+IGNORE = re.compile(r"design-ignore:\s*([\w-]*)(.*)")
+WHO = re.compile(r"who decided:(.*)")
+DECL = re.compile(r"^\s*-?[a-zA-Z-]+\s*:")
+COMMENT_ONLY = re.compile(r"^\s*(?://|/\*|\*|<!--|\{/\*)")
+
+
+def px_of(number, unit):
+    return float(number) * (16 if unit == "rem" else 1)
+
+
+def context(lines, idx):
+    """(scope, selector): the CSS block around a declaration, else the markup tag it sits in."""
+    line = lines[idx]
+    if DECL.match(line) and "{" not in line:
+        return css_block(lines, idx)
+    if "{" in line and DECL.search(line.split("{", 1)[1] or ""):
+        return line, line.split("{", 1)[0]
+    return markup_scope(lines, idx), ""
+
+
+def css_block(lines, idx):
+    start, end, depth = None, idx, 0
+    for j in range(idx - 1, max(-1, idx - 40), -1):
+        depth += lines[j].count("}") - lines[j].count("{")
+        if depth < 0:
+            start = j
+            break
+    if start is None:
+        return lines[idx], ""
+    depth = 0
+    for j in range(idx + 1, min(len(lines), idx + 40)):
+        depth += lines[j].count("{") - lines[j].count("}")
+        end = j
+        if depth < 0:
+            break
+    return "\n".join(lines[start:end + 1]), lines[start].split("{")[0]
+
+
+def markup_scope(lines, idx):
+    for j in range(idx, max(-1, idx - 6), -1):
+        text = lines[j]
+        if j < idx and text.rstrip().endswith(">"):
+            break
+        if re.search(r"<[A-Za-z]", text):
+            return "\n".join(lines[j:idx + 1])
+    return lines[idx]
+
+
+def font_px(scope):
+    for pattern in (FONT_SIZE, TW_SIZE):
+        hit = pattern.search(scope)
+        if hit:
+            return px_of(hit.group(1), hit.group(2))
+    hit = JS_FONT_SIZE.search(scope)
+    if hit:
+        return px_of(hit.group(1) or hit.group(3), hit.group(4) or "px")
+    hit = TW_NAMED_SIZE.search(scope)
+    return TW_PX[hit.group(1)] if hit else None
+
+
+def interactive(scope, selector):
+    return bool(CONTROL_TAG.search(scope) or CONTROL_SEL.search(selector))
+
+
+def gradient_text(line, scope, selector):
+    out = []
+    if CLIP_TEXT.search(line) and "gradient" in scope.lower():
+        out.append("background-clip: text over a gradient")
+    if TW_CLIP_TEXT.search(line) and TW_GRADIENT.search(scope):
+        out.append("bg-clip-text over a gradient background")
+    return out
+
+
+def neutral(color_text):
+    hit = COLOR.search(color_text)
+    word = hit.group(0) if hit else (color_text.split() or [""])[0].lower()
+    if word in NEUTRAL_WORDS:
+        return True
+    parsed = parse_color(word)
+    return bool(parsed) and max(parsed[:3]) - min(parsed[:3]) < 30
+
+
+def side_tab(line, scope, selector):
+    out = []
+    floor = 2 if ROUNDED.search(scope.replace("rounded-none", "")) else 4
+    out += ["%s, a %spx stripe on one side" % (m.group(0), m.group(1))
+            for m in TW_SIDE.finditer(line) if int(m.group(1)) >= floor]
+    if SAFE_ELEMENT.search(scope):
+        return out
+    floor = 2 if re.search(r"border-radius|borderRadius", scope) else 3
+    for pattern in (CSS_SIDE, JS_SIDE):
+        out += ["%s, a %spx coloured stripe on one side" % (m.group(0).strip(), m.group(1))
+                for m in pattern.finditer(line) if int(m.group(1)) >= floor and not neutral(m.group(2))]
+    out += ["%s, a stripe on one side" % m.group(0) for m in CSS_SIDE_WIDTH.finditer(line)
+            if int(m.group(1)) >= 3]
+    return out
+
+
+def bounce_easing(line, scope, selector):
+    out = ["animate-bounce" for _ in TW_BOUNCE.finditer(line)]
+    out += ["animation: %s" % m.group(1).strip() for m in ANIM_BOUNCE.finditer(line)]
+    out += ["easing %s overshoots" % m.group(0) for m in EASE_NAME.finditer(line)]
+    for m in CUBIC.finditer(line):
+        y1, y2 = float(m.group(2)), float(m.group(4))
+        if min(y1, y2) < -0.1 or max(y1, y2) > 1.1:
+            out.append("%s overshoots, y outside [-0.1, 1.1]" % m.group(0))
+    return out
+
+
+def sizes(line):
+    for m in FONT_SIZE.finditer(line):
+        yield m.group(0), px_of(m.group(1), m.group(2))
+    for m in TW_SIZE.finditer(line):
+        yield m.group(0), px_of(m.group(1), m.group(2))
+    for m in JS_FONT_SIZE.finditer(line):
+        yield m.group(0).rstrip(",} "), px_of(m.group(1) or m.group(3), m.group(4) or "px")
+
+
+def tiny_text(line, scope, selector):
+    if SUB_SUP.search(scope) or SUB_SUP.search(selector):
+        return []
+    label = (interactive(scope, selector) or "uppercase" in scope
+             or CODE_TAG.search(scope) or CODE_TAG.search(selector))
+    floor, kind = (11, "a label or control") if label else (12, "body text")
+    return ["%s is %gpx, under the %dpx floor for %s" % (text, value, floor, kind)
+            for text, value in sizes(line) if value < floor]
+
+
+def leading_ratios(line, scope):
+    size = font_px(scope)
+    for m in LINE_HEIGHT.finditer(line):
+        value, unit = float(m.group(1)), m.group(2) or ""
+        ratio = {"": value, "em": value, "%": value / 100}.get(unit)
+        if ratio is None and size:
+            ratio = px_of(value, unit) / size
+        if ratio is not None:
+            yield m.group(0).strip(), ratio
+    for m in JS_LINE_HEIGHT.finditer(line):
+        yield m.group(0), float(m.group(1))
+    for m in TW_LEADING.finditer(line):
+        key = m.group(1)
+        yield m.group(0), TW_LEADING_RATIO.get(key) or float(key.strip("[]"))
+
+
+def body_text(scope, selector):
+    size = font_px(scope)
+    if size is not None and size >= 24:
+        return False
+    if HEADING.search(scope) or HEADING.search(selector) or "uppercase" in scope or BOLD.search(scope):
+        return False
+    return bool(size or BODY_TAG.search(scope) or BODY_SEL.search(selector))
+
+
+def tight_leading(line, scope, selector):
+    if not body_text(scope, selector):
+        return []
+    return ["%s is %.2fx on body text, under 1.3x" % (text, ratio)
+            for text, ratio in leading_ratios(line, scope) if 0 < round(ratio, 2) < 1.3]
+
+
+def tracking_em(line, scope):
+    size = font_px(scope) or 16
+    for m in list(LETTER.finditer(line)) + list(JS_LETTER.finditer(line)):
+        value, unit = float(m.group(1)), m.group(2)
+        yield m.group(0), value if unit == "em" else px_of(value, unit) / size
+    for m in TW_TRACKING.finditer(line):
+        if m.group(1) == "widest":
+            yield m.group(0), 0.1
+            continue
+        value, unit = float(m.group(2)), m.group(3)
+        yield m.group(0), value if unit == "em" else px_of(value, unit) / size
+
+
+def wide_tracking(line, scope, selector):
+    if "uppercase" in scope or interactive(scope, selector):
+        return []
+    return ["%s is %.2fem on body text, over 0.05em" % (text, em)
+            for text, em in tracking_em(line, scope) if em > 0.05]
+
+
+LINE_RULES = (("gradient-text", gradient_text), ("side-tab", side_tab), ("bounce-easing", bounce_easing),
+              ("tiny-text", tiny_text), ("tight-leading", tight_leading), ("wide-tracking", wide_tracking))
+
+
+def tag_text(lines, idx, start):
+    """The whole <img ...> tag that opens at `start` on line idx, across lines."""
+    text = "\n".join([lines[idx][start:]] + lines[idx + 1:idx + 20])
+    depth, quote = 0, None
+    for i, ch in enumerate(text):
+        if quote:
+            quote = None if ch == quote else quote
+            continue
+        if ch in "\"'`":
+            quote = ch
+            continue
+        depth += {"{": 1, "}": -1}.get(ch, 0)
+        if ch == ">" and depth == 0:
+            return text[:i + 1]
+    return text
+
+
+def attr_present(tag, name):
+    hit = re.search(r"(?:^|[\s:])(?:v-bind:)?%s(?:\s*=\s*(\"[^\"]*\"|'[^']*'|\{[^}]*\}|[^\s>]+))?(?=[\s/>=]|$)"
+                    % name, tag)
+    if hit:
+        return name == "alt" or (hit.group(1) or "").strip("\"'{} ") != ""
+    return bool(re.search(r"\{%s\}" % name, tag))
+
+
+def img_alt(lines, idx):
+    out = []
+    for m in IMG.finditer(lines[idx]):
+        tag = tag_text(lines, idx, m.start())
+        if "{..." in tag or "v-bind=" in tag:
+            continue
+        missing = [a for a in ("alt", "src") if not attr_present(tag[4:], a)]
+        if missing:
+            out.append("<img> without %s" % " or ".join(missing))
+    return out
+
+
+def parse_hex(text):
+    digits = text[1:]
+    digits = "".join(c * 2 for c in digits) if len(digits) in (3, 4) else digits
+    if len(digits) not in (6, 8) or not re.fullmatch(r"[0-9a-f]+", digits):
+        return None
+    alpha = int(digits[6:8], 16) / 255 if len(digits) == 8 else 1.0
+    return (int(digits[0:2], 16), int(digits[2:4], 16), int(digits[4:6], 16), round(alpha, 2))
+
+
+def parse_color(text):
+    text = text.strip().lower()
+    if text.startswith("#"):
+        return parse_hex(text)
+    hit = re.fullmatch(r"rgba?\(([^)]*)\)", text)
+    if not hit:
+        return None
+    parts = [p for p in re.split(r"[\s,/]+", hit.group(1)) if p]
+    if len(parts) < 3 or not all(re.fullmatch(r"[\d.]+%?", p) for p in parts):
+        return None
+    alpha = parts[3] if len(parts) > 3 else "1"
+    alpha = float(alpha[:-1]) / 100 if alpha.endswith("%") else float(alpha)
+    return (float(parts[0]), float(parts[1]), float(parts[2]), round(alpha, 2))
+
+
+def parse_value(raw):
+    """(kind, parsed) of a literal or token value, or None when it is neither a colour nor a length."""
+    raw = raw.strip()
+    color = parse_color(raw) if COLOR.fullmatch(raw) else None
+    if color:
+        return "color", color
+    length = LENGTH.fullmatch(raw)
+    return ("length", px_of(*length.groups())) if length else None
+
+
+def distance(kind, a, b):
+    if kind == "length":
+        return abs(a - b)
+    if a[3] != b[3]:
+        return None
+    return max(abs(x - y) for x, y in zip(a[:3], b[:3]))
+
+
+def tokens_in(text):
+    out = []
+    for m in TOKEN_DEF.finditer(text):
+        value = parse_value(m.group(2))
+        if value:
+            out.append({"name": m.group(1), "raw": m.group(2).strip(), "kind": value[0], "value": value[1]})
+    return out
+
+
+def nearest(kind, value, tokens):
+    """(token, distance) of the closest token of this kind, equal ones first."""
+    tolerance = 0.5 if kind == "length" else 6
+    best = None
+    for token in tokens:
+        if token["kind"] != kind:
+            continue
+        d = distance(kind, value, token["value"])
+        if d is None or d > tolerance:
+            continue
+        if best is None or d < best[1]:
+            best = (token, d)
+    return best
+
+
+def judge(raw, kind, value, tokens):
+    base_hit = nearest(kind, value, tokens["base"])
+    if base_hit and base_hit[1] < 1e-6:
+        return "%s equals %s: use var(%s)" % (raw, base_hit[0]["name"], base_hit[0]["name"])
+    if base_hit:
+        token, d = base_hit
+        unit = "px" if kind == "length" else " per channel"
+        return "%s is %g%s off %s (%s): use var(%s)" % (raw, d, unit, token["name"], token["raw"], token["name"])
+    new_hit = nearest(kind, value, tokens["new"])
+    if new_hit and new_hit[1] < 1e-6:
+        return "%s equals %s: use var(%s)" % (raw, new_hit[0]["name"], new_hit[0]["name"])
+    return None
+
+
+def literals(line):
+    if re.match(r"^\s*--[\w-]+\s*:", line):
+        return []
+    text = VAR_CALL.sub("", line)
+    out = []
+    if not text.rstrip().endswith("{"):
+        out += [m.group(0) for m in COLOR.finditer(text)]
+    if not re.match(r"^\s*@(?:media|container)", text):
+        out += [m.group(0) for m in PX.finditer(text) if float(m.group(1)) > 0]
+    return out
+
+
+def off_token(line, tokens, near_literals):
+    out = []
+    for raw in literals(line):
+        value = parse_value(raw)
+        what = judge(raw, value[0], value[1], tokens) if value and tokens else None
+        if not what:
+            continue
+        out.append(what)
+        if " off " in what:
+            near_literals.append(value)
+    return out
+
+
+def ignore_of(text):
+    hit = IGNORE.search(text)
+    if not hit:
+        return None
+    who = WHO.search(hit.group(2))
+    evidence = re.sub(r"(\*/|-->|\}|\s)+$", "", who.group(1)).strip() if who else ""
+    return hit.group(1), evidence
+
+
+def silenced(lines, idx, rule):
+    for j in (idx, idx - 1):
+        found = ignore_of(lines[j]) if 0 <= j < len(lines) else None
+        if found and found[0] == rule and found[1]:
+            return True
+    return False
+
+
+def bad_ignore(line):
+    found = ignore_of(line)
+    if not found:
+        return None
+    rule, evidence = found
+    if rule not in RULE_IDS:
+        return "design-ignore names no known rule (%s)" % (rule or "empty")
+    if not evidence:
+        return "design-ignore: %s has no `who decided:` with evidence" % rule
+    return None
+
+
+def scan_file(path, is_new, base, tokens, near_literals, var_refs):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as handle:
+            text = handle.read()
+    except OSError:
+        return []
+    lines = text.splitlines()
+    rows, whole_file = [], {"outline-none": [], "motion-no-reduce": []}
+    for number, line in sorted(new_code.added_lines(base, path, is_new).items()):
+        idx = number - 1
+        problem = bad_ignore(line)
+        if problem:
+            rows.append((idx, "bad-ignore", problem))
+        if idx >= len(lines) or COMMENT_ONLY.match(line):
+            continue
+        var_refs.update(re.findall(r"var\((--[\w-]+)", line))
+        scope, selector = context(lines, idx)
+        for rule, check in LINE_RULES:
+            rows += [(idx, rule, what) for what in check(line, scope, selector)]
+        rows += [(idx, "img-alt", what) for what in img_alt(lines, idx)]
+        rows += [(idx, "off-token", what) for what in off_token(line, tokens, near_literals)]
+        whole_file["outline-none"] += [(idx, m.group(0)) for m in OUTLINE.finditer(line)]
+        whole_file["motion-no-reduce"] += [(idx, m.group(0).strip()) for m in MOTION.finditer(line)]
+    rows += file_wide(lines, whole_file, text)
+    return [{"file": path, "line": idx + 1, "rule": rule, "what": what}
+            for idx, rule, what in sorted(rows, key=lambda r: r[0])
+            if rule == "bad-ignore" or not silenced(lines, idx, rule)]
+
+
+def file_wide(lines, hits, text):
+    """One row per file and rule, at the first added line not silenced there."""
+    remedy = {"outline-none": (FOCUS_VISIBLE, "with no :focus-visible style anywhere in the file"),
+              "motion-no-reduce": (REDUCE, "with no prefers-reduced-motion or motion-reduce: anywhere in the file")}
+    out = []
+    for rule, (pattern, why) in remedy.items():
+        open_hits = [(idx, what) for idx, what in hits[rule] if not silenced(lines, idx, rule)]
+        if not open_hits or pattern.search(text):
+            continue
+        more = len(open_hits) - 1
+        tail = ", and %d more added line(s)" % more if more else ""
+        out.append((open_hits[0][0], rule, "%s %s%s" % (open_hits[0][1], why, tail)))
+    return out
+
+
+def load_tokens(cfg, base):
+    paths = [os.path.normpath(p) for p in (cfg.get("ui") or {}).get("tokens") or []]
+    base_tokens, now_tokens = [], []
+    for path in paths:
+        base_tokens += tokens_in(new_code.git("show", "%s:%s" % (base, path), check=False))
+        try:
+            with open(path, encoding="utf-8", errors="replace") as handle:
+                now_tokens += tokens_in(handle.read())
+        except OSError:
+            continue
+    if not paths:
+        return None, paths
+    seen = {(t["name"], t["raw"]) for t in base_tokens}
+    return {"base": base_tokens, "new": [t for t in now_tokens if (t["name"], t["raw"]) not in seen]}, paths
+
+
+def token_to_silence(paths, base, tokens, near_literals, var_refs, changed):
+    """A token this branch adds a hair off an existing one, to give an off-token literal a name."""
+    out = []
+    for path, old in changed:
+        if path not in paths:
+            continue
+        for number, line in sorted(new_code.added_lines(base, path, old is None).items()):
+            for token in tokens_in(line):
+                hit = nearest(token["kind"], token["value"], tokens["base"])
+                if not hit or hit[1] < 1e-6:
+                    continue
+                used = token["name"] in var_refs or any(
+                    distance(token["kind"], token["value"], v) == 0 for k, v in near_literals if k == token["kind"])
+                if not used:
+                    continue
+                out.append({"file": path, "line": number, "rule": "token-to-silence",
+                            "what": "%s: %s is a near copy of %s (%s); use var(%s) instead"
+                                    % (token["name"], token["raw"], hit[0]["name"], hit[0]["raw"], hit[0]["name"])})
+    return out
+
+
+def run_detect(cmd):
+    if not cmd:
+        return None
+    try:
+        out = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=300)
+    except subprocess.TimeoutExpired:
+        return {"cmd": cmd, "error": "timed out after 300s"}
+    if out.returncode == 127:
+        return {"cmd": cmd, "error": "not installed here: %s" % (out.stderr.strip() or "exit 127")}
+    try:
+        return {"cmd": cmd, "exit": out.returncode, "output": json.loads(out.stdout)}
+    except ValueError:
+        return {"cmd": cmd, "exit": out.returncode, "output": (out.stdout or out.stderr).strip()}
+
+
+def report(findings, files, detect, as_json):
+    if as_json:
+        print(json.dumps({"files": files, "findings": findings, "detect": detect}, indent=2))
+        return 1 if findings else 0
+    for f in findings:
+        print("%s:%d  %s  %s" % (f["file"], f["line"], f["rule"], f["what"]))
+    clean = "design ok, %d screen file(s), added lines only" % len(files)
+    dirty = ("\n%d design finding(s) in added lines. Fix the line, or silence one rule there with\n"
+             "`design-ignore: <rule> who decided: <evidence>` on it or the line above." % len(findings))
+    print(dirty if findings else clean)
+    if detect:
+        body = detect.get("error") or detect.get("output")
+        print("\n== ui.detectCmd: %s" % detect["cmd"])
+        print(body if isinstance(body, str) else json.dumps(body, indent=2))
+    return 1 if findings else 0
+
+
+def main(argv):
+    ap = argparse.ArgumentParser(prog="kit design", add_help=False)
+    ap.add_argument("--base")
+    ap.add_argument("--json", action="store_true")
+    ap.add_argument("-h", "--help", action="store_true")
+    args = ap.parse_args(argv)
+    if args.help:
+        print(__doc__.strip())
+        return 0
+    root = new_code.git("rev-parse", "--show-toplevel").strip()
+    os.chdir(root)
+    cfg = screen_routes.config(root)
+    browser = cfg.get("browser") or {}
+    globs = browser.get("screenGlobs") or screen_routes.DEFAULT_SCREEN_GLOBS
+    excludes = browser.get("excludeGlobs") or screen_routes.DEFAULT_EXCLUDE_GLOBS
+    base = new_code.merge_base(args.base)
+    changed = new_code.changed(base)
+    screens = [(p, o) for p, o in changed if os.path.splitext(p)[1].lower() in EXTS
+               and screen_routes.matches(p, globs) and not screen_routes.matches(p, excludes)]
+    if not screens and args.json:
+        return report([], [], None, True)
+    if not screens:
+        print("design  no changed screen file")
+        return 0
+    tokens, token_paths = load_tokens(cfg, base)
+    findings, near_literals, var_refs = [], [], set()
+    for path, old in screens:
+        findings += scan_file(path, old is None, base, tokens, near_literals, var_refs)
+    if tokens:
+        findings += token_to_silence(token_paths, base, tokens, near_literals, var_refs, changed)
+    detect = run_detect((cfg.get("ui") or {}).get("detectCmd"))
+    return report(findings, [p for p, _ in screens], detect, args.json)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

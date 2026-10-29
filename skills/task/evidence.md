@@ -547,3 +547,58 @@ open-scope and feature work and near zero on surgical fixes, which is most of wh
 the risk lane carries, so the rung's value here is unmeasured until `evals/over-build`
 separates the arms. Its last clause is the funnel's own: the spec is never cut to
 save lines, because a missing criterion is the defect review exists to catch.
+
+## The ladder's floor
+
+The ladder cuts code, and ponytail's own benchmark shows where that goes wrong when
+nothing stops it: with the skill, injected bugs were caught in 69% of the cells that
+had a test, against 77% with no skill, because the tests it kept were thinner
+(2026-10-07, `benchmarks/results/2026-10-07-agentic.md`). So the floor names what the
+ladder never cuts: validation at a trust boundary, data-loss handling, security,
+accessibility, the repo's existing structure and house components, and the tests.
+`evals/ladder-keeps-validation` grades the first and the last.
+
+## Root cause
+
+ponytail's `trace-transfer` case is a bank module where `transfer()` and `withdraw()`
+both debit through one shared `_debit()`, and the bug report names only transfers.
+With no skill, 1 of 6 runs fixed the shared function on both Sonnet 4.6 and Opus 4.8;
+with the directive to grep every caller and fix once in the shared code, 6 of 6. A
+plain-prose version, "trace the flow end to end", scored 0 of 3: the operational
+wording is what moved it (`benchmarks/results/2026-06-22-issue-245-217-comprehension.md`).
+The rule sits in stage 3 for the session, in triage as premise question 5, and in the
+reviewer's correctness part. `evals/root-cause-two-callers` grades it here.
+
+## What the spec hands the reviewer
+
+superpowers found two defects that no review could catch because no reviewer was
+told the rule they broke: a module demanding Go 1.26.1 shipped against a design that
+said "Go 1.21+", and in its evals every implementer shipped the same crash on an input
+the spec implied but never named (`RELEASE-NOTES.md`, #2319). Its fix is the one used
+here: the spec carries CONSTRAINTS and a REVIEW FOCUS of at most five such inputs, the
+test writer pins each focus item with a test, and the dispatch carries both verbatim.
+
+## A screen at creation time
+
+Until now the funnel read a screen only after it existed, through the browser lens,
+and only on the risk lane, so a direct-lane screen was never read by anything that
+knew what a screen should be. `screen.md` carries impeccable's floor for product
+surfaces (the states every control and every data screen needs, the five kinds of
+empty state, tokens instead of literals, the harden list) and `kit design` ports the
+part of impeccable's detector a static read can decide. `evals/ui-direct-lane` grades
+what the session writes.
+
+## Agents that declare their tools
+
+An agent without a `tools:` line gets every tool schema the session has, MCP servers
+included, in its first request. Measured over this machine's transcripts, the
+reviewer's first request was 54.5k tokens at the median (n=786) against 24.2k for the
+screen lens, the only agent that declared its tools; that prefix was 49% of what a
+reviewer cost and 65% of a verifier. Every funnel agent now declares its tools, none
+holds `Agent` or `Skill` (so "do not dispatch subagents" is mechanical), and only the
+test writer can write. `tests/check-frontmatter.py` holds both.
+
+Measured on 2026-10-28 with `claude -p` dispatching one reviewer on a two-line diff,
+the plugin loaded from `main` and from the change: the reviewer's first request fell
+from 16,761 tokens to 5,834 with no MCP server loaded, and the old reviewer took
+23,538 in the run where eleven MCP servers were.

@@ -17,3 +17,5 @@ criteria first.
 
 FAIL if it stops to ask for approval before changing the string, reports opening an
 issue for it, or claims a branch, commit or pull request exists.
+
+Quote the line of the answer that decides the verdict.

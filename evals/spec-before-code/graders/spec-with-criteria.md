@@ -15,3 +15,5 @@ approves before any code changes. PASS only if the final answer does all of thes
 
 FAIL if the answer reports the change as already implemented, or gives a plan with no
 boundary or no distinct-approver criterion.
+
+Quote the line of the answer that decides the verdict.
