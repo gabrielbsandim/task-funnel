@@ -54,7 +54,7 @@ READERS = (
 # .env, .env.local, .env.prod, but never .env.example / .sample / .template / .dist.
 DOTENV = r"(?<![\w.])\.env(?![\w-]*\.?(example|sample|template|dist))(\.[A-Za-z0-9_-]+)?\b"
 # Agent config that carries an inline `env` block per MCP server.
-AGENTCFG = r"(?<![\w.])\.(claude|mcp)\.json\b"
+AGENTCFG = r"(?<![\w.])(?:\.(?:claude|mcp)|mcp_config)\.json\b"
 ENVFILE = r"(?:" + DOTENV + r"|" + AGENTCFG + r")"
 GREP = r"(grep|egrep|fgrep|rg)"
 # Legitimate shapes that load a .env without printing it.
@@ -178,6 +178,10 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except Exception:
         return 0
+    if "hook_event_name" not in payload and "tool_name" not in payload:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import host
+        return host.run_guard(check, payload, sys.argv[1] if len(sys.argv) > 1 else "PreToolUse")
     return check(payload)
 
 

@@ -1,0 +1,374 @@
+#!/usr/bin/env python3
+"""Build or install the Antigravity plugin bundle from this repository's single source.
+
+    kit export-antigravity [--out DIR] [--install] [--zip] [--root DIR]
+
+Claude Code requires `model: sonnet` in `agents/*.md` so scoped stages do not pay Opus
+rates, plus `hooks/hooks.json` and `commands/*.md`. Antigravity requires `model: flash`
+(or `pro` / `flash_lite` / `inherit`), tool allowlists as YAML arrays of Antigravity
+tool names, `hooks.json` at the plugin root, and every command packaged as a skill.
+
+Generating the Antigravity bundle from the source files keeps one copy of every prompt,
+guard and script while passing both `claude plugin validate --strict` and
+`agy plugin validate --strict` with zero warnings.
+"""
+
+import argparse
+import glob
+import json
+import os
+import re
+import shutil
+import stat
+import sys
+import tempfile
+import zipfile
+
+DEFAULT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+MODEL_MAP = {
+    "sonnet": "flash",
+    "opus": "pro",
+    "haiku": "flash_lite",
+    "inherit": "inherit",
+    "flash": "flash",
+    "pro": "pro",
+    "flash_lite": "flash_lite",
+}
+
+TOOL_MAP = {
+    "Read": ["read_file", "view_file", "list_dir"],
+    "Grep": ["grep_search"],
+    "Glob": ["find_by_name"],
+    "Bash": ["run_command", "manage_task"],
+    "Write": ["write_file", "write_to_file"],
+    "Edit": ["edit_file", "replace_file_content", "multi_replace_file_content"],
+    "NotebookEdit": ["notebook_edit"],
+}
+
+PRE_MATCHER = (
+    "run_command|write_file|write_to_file|edit_file|replace_file_content"
+    "|multi_replace_file_content|notebook_edit|call_mcp_tool|mcp_.*_addCommentToJiraIssue"
+)
+POST_MATCHER = (
+    "write_file|write_to_file|edit_file|replace_file_content"
+    "|multi_replace_file_content|notebook_edit"
+)
+
+INSTALLED_KIT = "~/.gemini/config/plugins/task-funnel/scripts/kit"
+
+
+def die(message, code=1):
+    print(message, file=sys.stderr)
+    sys.exit(code)
+
+
+def read(path):
+    with open(path, encoding="utf-8") as handle:
+        return handle.read()
+
+
+def write(path, text, executable=False):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as handle:
+        handle.write(text)
+    if executable:
+        mode = os.stat(path).st_mode
+        os.chmod(path, mode | stat.S_IXUSR | stat.S_IXGRP | stat.S_IXOTH)
+
+
+def load_source_manifest(root):
+    for rel in (os.path.join(".claude-plugin", "plugin.json"), "plugin.json"):
+        path = os.path.join(root, rel)
+        if os.path.isfile(path):
+            try:
+                return json.loads(read(path))
+            except json.JSONDecodeError as err:
+                die(f"{path}: {err}")
+    die(f"no plugin manifest under {root}")
+
+
+def split_frontmatter(text, path):
+    match = re.match(r"^---\n(.*?)\n---\n", text, re.S)
+    if not match:
+        die(f"{path}: missing frontmatter")
+    return match.group(1), text[match.end():]
+
+
+def parse_simple_frontmatter(block):
+    """Parse flat scalar or YAML-list frontmatter without requiring PyYAML."""
+    data = {}
+    current_list = None
+    for raw in block.splitlines():
+        if not raw.strip() or raw.lstrip().startswith("#"):
+            continue
+        if raw.startswith(("  - ", "    - ")) and current_list is not None:
+            data[current_list].append(raw.split("- ", 1)[1].strip().strip('"').strip("'"))
+            continue
+        current_list = None
+        if ":" not in raw:
+            continue
+        key, val = raw.split(":", 1)
+        key, val = key.strip(), val.strip()
+        if not val:
+            data[key] = []
+            current_list = key
+        elif val.startswith("[") and val.endswith("]"):
+            items = [x.strip().strip('"').strip("'") for x in val[1:-1].split(",") if x.strip()]
+            data[key] = items
+        else:
+            if (val.startswith('"') and val.endswith('"')) or (val.startswith("'") and val.endswith("'")):
+                try:
+                    val = json.loads(val) if val.startswith('"') else val[1:-1]
+                except ValueError:
+                    val = val[1:-1]
+            data[key] = val
+    return data
+
+
+def map_tools(raw_tools):
+    tokens = raw_tools if isinstance(raw_tools, list) else [t.strip() for t in str(raw_tools).split(",") if t.strip()]
+    mapped = []
+    inherit_mcp = False
+    for token in tokens:
+        if token.startswith("mcp__"):
+            inherit_mcp = True
+            for extra in ("call_mcp_tool", "list_resources", "read_resource"):
+                if extra not in mapped:
+                    mapped.append(extra)
+            continue
+        for item in TOOL_MAP.get(token, [token]):
+            if item not in mapped:
+                mapped.append(item)
+    if "send_message" not in mapped:
+        mapped.append("send_message")
+    return mapped, inherit_mcp
+
+
+def convert_agent(text, path):
+    block, body = split_frontmatter(text, path)
+    meta = parse_simple_frontmatter(block)
+    name = meta.get("name") or os.path.splitext(os.path.basename(path))[0]
+    desc = meta.get("description") or ""
+    raw_model = str(meta.get("model") or "inherit")
+    if raw_model not in MODEL_MAP:
+        die(f"{path}: unknown model {raw_model!r}")
+    model = MODEL_MAP[raw_model]
+    tools, inherit_mcp = map_tools(meta.get("tools") or [])
+    if isinstance(meta.get("inheritMcp"), bool):
+        inherit_mcp = meta["inheritMcp"]
+    elif str(meta.get("inheritMcp", "")).lower() == "true":
+        inherit_mcp = True
+
+    lines = [
+        "---",
+        f"name: {name}",
+        f"description: {json.dumps(desc)}",
+        f"model: {model}",
+        "tools:",
+    ]
+    lines.extend(f"  - {t}" for t in tools)
+    lines.append("hidden: true")
+    lines.append(f"inheritMcp: {'true' if inherit_mcp else 'false'}")
+    lines.append("---")
+    return "\n".join(lines) + "\n" + body, name, model
+
+
+def adapt_skill_markdown(text, agent_models):
+    text = text.replace('"${CLAUDE_PLUGIN_ROOT}/scripts/kit"', f'"{INSTALLED_KIT}"')
+    text = text.replace("${CLAUDE_PLUGIN_ROOT}/scripts/kit", INSTALLED_KIT)
+    for agent_name, agy_model in agent_models.items():
+        text = re.sub(
+            rf"(\|\s*)`task-funnel:{re.escape(agent_name)}`(\s*\|\s*)\S+(\s*\|)",
+            rf"\1`{agent_name}`\2{agy_model}\3",
+            text,
+        )
+        text = text.replace(f"`task-funnel:{agent_name}`", f"`{agent_name}`")
+    return text
+
+
+def convert_setup_command(text, path):
+    block, body = split_frontmatter(text, path)
+    meta = parse_simple_frontmatter(block)
+    desc = meta.get("description") or "One-time setup for task-funnel in this environment"
+    body = body.replace('"${CLAUDE_PLUGIN_ROOT}/scripts/kit"', '"$HOME/.gemini/config/plugins/task-funnel/scripts/kit"')
+    body = body.replace("${CLAUDE_PLUGIN_ROOT}/scripts/kit", "$HOME/.gemini/config/plugins/task-funnel/scripts/kit")
+    front = "\n".join(["---", "name: setup", f"description: {json.dumps(desc)}", "---"])
+    return front + "\n" + body
+
+
+def copy_clean_tree(src, dst):
+    os.makedirs(dst, exist_ok=True)
+    for entry in sorted(os.listdir(src)):
+        if entry.startswith(".") or entry == "__pycache__":
+            continue
+        sp = os.path.join(src, entry)
+        dp = os.path.join(dst, entry)
+        if os.path.isdir(sp):
+            copy_clean_tree(sp, dp)
+        elif os.path.isfile(sp):
+            shutil.copy2(sp, dp)
+
+
+def build_bundle(root, dest):
+    source = load_source_manifest(root)
+    name = source.get("name") or "task-funnel"
+
+    manifest = {
+        "$schema": "https://antigravity.google/schemas/v1/plugin.json",
+        "name": name,
+    }
+    for key in ("displayName", "version", "description", "author", "homepage", "repository", "license", "keywords"):
+        if key in source:
+            manifest[key] = source[key]
+
+    for icon_rel in (os.path.join(".claude-plugin", "icon.png"), os.path.join("assets", "icon.png")):
+        icon_src = os.path.join(root, icon_rel)
+        if os.path.isfile(icon_src):
+            os.makedirs(os.path.join(dest, "assets"), exist_ok=True)
+            shutil.copy2(icon_src, os.path.join(dest, "assets", "icon.png"))
+            manifest["logo"] = "assets/icon.png"
+            break
+
+    write(os.path.join(dest, "plugin.json"), json.dumps(manifest, indent=2) + "\n")
+
+    hooks_manifest = {
+        "funnel-guards": {
+            "PreToolUse": [
+                {
+                    "matcher": PRE_MATCHER,
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "timeout": 15,
+                            "command": "python3 ./hooks/guards.py PreToolUse",
+                        }
+                    ],
+                }
+            ],
+            "PostToolUse": [
+                {
+                    "matcher": POST_MATCHER,
+                    "hooks": [
+                        {
+                            "type": "command",
+                            "timeout": 15,
+                            "command": "python3 ./hooks/guards.py PostToolUse",
+                        }
+                    ],
+                }
+            ],
+        },
+        "funnel-gate-receipt": {
+            "Stop": [
+                {
+                    "type": "command",
+                    "timeout": 15,
+                    "command": "python3 ./hooks/gate-receipt.py",
+                }
+            ]
+        },
+    }
+    write(os.path.join(dest, "hooks.json"), json.dumps(hooks_manifest, indent=2) + "\n")
+
+    hooks_src = os.path.join(root, "hooks")
+    if os.path.isdir(hooks_src):
+        os.makedirs(os.path.join(dest, "hooks"), exist_ok=True)
+        for entry in sorted(os.listdir(hooks_src)):
+            if entry in ("hooks.json", "__pycache__") or entry.startswith("."):
+                continue
+            sp = os.path.join(hooks_src, entry)
+            if os.path.isfile(sp):
+                shutil.copy2(sp, os.path.join(dest, "hooks", entry))
+
+    for folder in ("scripts", "templates"):
+        src_dir = os.path.join(root, folder)
+        if os.path.isdir(src_dir):
+            copy_clean_tree(src_dir, os.path.join(dest, folder))
+
+    for top_file in ("LICENSE", "README.md"):
+        sp = os.path.join(root, top_file)
+        if os.path.isfile(sp):
+            shutil.copy2(sp, os.path.join(dest, top_file))
+
+    agent_models = {}
+    for agent_path in sorted(glob.glob(os.path.join(root, "agents", "*.md"))):
+        converted, agent_name, agy_model = convert_agent(read(agent_path), agent_path)
+        agent_models[agent_name] = agy_model
+        write(os.path.join(dest, "agents", os.path.basename(agent_path)), converted)
+
+    skills_src = os.path.join(root, "skills")
+    if os.path.isdir(skills_src):
+        copy_clean_tree(skills_src, os.path.join(dest, "skills"))
+        for dirpath, _, filenames in os.walk(os.path.join(dest, "skills")):
+            for fname in filenames:
+                if fname.endswith(".md"):
+                    md_path = os.path.join(dirpath, fname)
+                    write(md_path, adapt_skill_markdown(read(md_path), agent_models))
+
+    setup_cmd = os.path.join(root, "commands", "setup.md")
+    setup_skill = os.path.join(dest, "skills", "setup", "SKILL.md")
+    if os.path.isfile(setup_cmd) and not os.path.isfile(setup_skill):
+        write(setup_skill, convert_setup_command(read(setup_cmd), setup_cmd))
+
+    return name, manifest.get("version", "unknown")
+
+
+def zip_bundle(folder, archive_path):
+    parent = os.path.dirname(folder)
+    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        for base, dirs, files in os.walk(folder):
+            dirs.sort()
+            for fname in sorted(files):
+                full = os.path.join(base, fname)
+                rel = os.path.relpath(full, parent)
+                info = zipfile.ZipInfo(rel)
+                st = os.stat(full)
+                info.external_attr = (stat.S_IMODE(st.st_mode) | stat.S_IFREG) << 16
+                info.compress_type = zipfile.ZIP_DEFLATED
+                with open(full, "rb") as fh:
+                    zf.writestr(info, fh.read())
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(description="Package or install task-funnel for Antigravity")
+    parser.add_argument("--out", help="Output parent directory")
+    parser.add_argument("--install", action="store_true", help="Install into ~/.gemini/config/plugins/")
+    parser.add_argument("--zip", action="store_true", help="Also write task-funnel-antigravity.zip")
+    parser.add_argument("--root", default=DEFAULT_ROOT, help="Plugin source root")
+    args = parser.parse_args(argv)
+
+    if not args.out and not args.install:
+        die("pass --out DIR or --install")
+
+    root = os.path.abspath(args.root)
+    if args.install:
+        cfg = os.environ.get("ANTIGRAVITY_CONFIG_DIR") or os.path.expanduser("~/.gemini/config")
+        out_parent = os.path.join(cfg, "plugins")
+    else:
+        out_parent = os.path.abspath(args.out)
+
+    os.makedirs(out_parent, exist_ok=True)
+    stage_parent = tempfile.mkdtemp(prefix=".task-funnel-agy-", dir=out_parent)
+    try:
+        staged = os.path.join(stage_parent, "task-funnel")
+        name, version = build_bundle(root, staged)
+        final = os.path.join(out_parent, name)
+        if os.path.realpath(root) == os.path.realpath(final):
+            # Already running from the installed Antigravity directory; nothing to replace.
+            print(final)
+            return 0
+        if os.path.exists(final):
+            shutil.rmtree(final)
+        shutil.move(staged, final)
+        if args.zip:
+            archive = os.path.join(out_parent, f"{name}-antigravity.zip")
+            zip_bundle(final, archive)
+        print(final)
+        return 0
+    finally:
+        shutil.rmtree(stage_parent, ignore_errors=True)
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

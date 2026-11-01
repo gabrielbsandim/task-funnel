@@ -17,6 +17,7 @@
 #   kit pr-body <file>         how much prose the pull request body adds
 #   kit ledger <file>          the same, on the tighter budget a comment gets
 #   kit export-skill <name>    package a skill to run outside this plugin
+#   kit export-antigravity     package or install this plugin for Antigravity
 #   kit comments               comment problems in the lines this branch adds
 #   kit ratchet --config F     ESLint violations this branch adds, not inherits
 #   kit design [--json]        interface defects a static read catches in the UI lines added
@@ -59,6 +60,7 @@ case "$cmd" in
   issues)   exec "$KIT_BIN/issues" "$@" ;;
   pr-body)  exec "$KIT_BIN/pr-body" "$@" ;;
   export-skill) exec "$KIT_BIN/export-skill" "$@" ;;
+  export-antigravity) exec "$KIT_BIN/export-antigravity" "$@" ;;
   # The same measurement, on the budget a comment gets. Flags after "$@" would win
   # over the caller's, so these go first.
   ledger)
@@ -103,6 +105,7 @@ case "$cmd" in
   version|--version|-v)
     expected="${1:-}"
     manifest="$KIT_ROOT/.claude-plugin/plugin.json"
+    [ -f "$manifest" ] || manifest="$KIT_ROOT/plugin.json"
     mine="$(jq -r '.version // empty' "$manifest" 2>/dev/null || true)"
     name="$(jq -r '.name // empty' "$manifest" 2>/dev/null || true)"
     [ -n "$mine" ] || mine=unknown
@@ -110,15 +113,27 @@ case "$cmd" in
     cfg="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
     newest="" newest_root=""
+    manifests=()
     while IFS= read -r m; do
+      [ -n "$m" ] && manifests+=("$m")
+    done < <(find "$cfg/plugins" -mindepth 2 -maxdepth 6 -name plugin.json -path '*/.claude-plugin/plugin.json' 2>/dev/null || true)
+    if [ -n "${ANTIGRAVITY_CONFIG_DIR:-}" ] || [ -z "${CLAUDE_CONFIG_DIR:-}" ]; then
+      agy_m="${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/config}/plugins/$name/plugin.json"
+      [ -f "$agy_m" ] && manifests+=("$agy_m")
+    fi
+    for m in "${manifests[@]}"; do
       [ -f "$m" ] || continue
       [ "$(jq -r '.name // empty' "$m" 2>/dev/null || true)" = "$name" ] || continue
       v="$(jq -r '.version // empty' "$m" 2>/dev/null || true)"
       [ -n "$v" ] || continue
       if [ -z "$newest" ] || [ "$(printf '%s\n%s\n' "$newest" "$v" | sort -V | tail -1)" = "$v" ]; then
-        newest="$v"; newest_root="$(dirname "$(dirname "$m")")"
+        newest="$v"
+        case "$m" in
+          */.claude-plugin/plugin.json) newest_root="$(dirname "$(dirname "$m")")" ;;
+          *)                            newest_root="$(dirname "$m")" ;;
+        esac
       fi
-    done < <(find "$cfg/plugins" -mindepth 2 -maxdepth 6 -name plugin.json -path '*/.claude-plugin/plugin.json' 2>/dev/null || true)
+    done
 
     printf '%-10s %-8s %s\n' running "$mine" "$KIT_ROOT"
     if [ -n "$newest" ]; then
@@ -202,6 +217,12 @@ case "$cmd" in
       *":$target:"*) printf 'PATH already contains %s\n' "$target" ;;
       *) printf 'Add this to your shell profile:\n  export PATH="%s:$PATH"\n' "$target" ;;
     esac
+    if [ -z "${KIT_NO_ANTIGRAVITY:-}" ] && {
+      [ -n "${ANTIGRAVITY_CONFIG_DIR:-}" ] || { [ -z "${CLAUDE_CONFIG_DIR:-}" ] && command -v agy >/dev/null 2>&1; }
+    }; then
+      agy_dest="$(python3 "$KIT_BIN/export-antigravity" --install --root "$KIT_ROOT")"
+      printf 'antigravity %s\n' "$agy_dest"
+    fi
     ;;
 
   doctor)

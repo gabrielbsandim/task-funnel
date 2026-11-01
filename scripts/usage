@@ -156,7 +156,12 @@ AGENT_STAGES = {
 }
 
 
+AGY_AGENT_TYPES = {}
+
+
 def agent_type(path):
+    if path in AGY_AGENT_TYPES and AGY_AGENT_TYPES[path]:
+        return AGY_AGENT_TYPES[path]
     meta = path[: -len(".jsonl")] + ".meta.json"
     try:
         with open(meta, errors="ignore") as handle:
@@ -166,21 +171,28 @@ def agent_type(path):
 
 
 def stage_of(path):
-    known = AGENT_STAGES.get(agent_type(path).rsplit(":", 1)[-1])
+    norm_type = agent_type(path).rsplit(":", 1)[-1].replace("_", "-")
+    known = AGENT_STAGES.get(norm_type)
     if known:
         return known
     try:
         with open(path, errors="ignore") as handle:
             for line in handle:
                 row = json.loads(line) if line.strip() else {}
-                if row.get("type") != "user":
+                kind = row.get("type")
+                if kind not in ("user", "USER_INPUT"):
                     continue
-                content = row.get("message", {}).get("content")
+                content = row.get("content") if kind == "USER_INPUT" else row.get("message", {}).get("content")
                 text = content if isinstance(content, str) else json.dumps(content)
-                head = text[:HEAD_CHARS].lower()
+                head = text[:HEAD_CHARS].lower().replace("_", "-")
+                for agent_name, stage_name in AGENT_STAGES.items():
+                    if agent_name in head:
+                        return stage_name
                 for needle, name in STAGES:
                     if needle in head:
                         return name
+                if "claude-kit/review/slice-" in head:
+                    return "4 reviewer"
                 return "other"
     except (OSError, ValueError):
         pass
@@ -209,21 +221,53 @@ def by_stage(sub_files, since=None, until=None):
     return {k: finish(v) for k, v in out.items() if v["requests"]}
 
 
+AGY_BRANCH = re.compile(r"(?:Current branch:\s*|git\s+switch\s+(?:-q\s+)?-c\s+)([A-Za-z0-9._/-]+)")
+
+
+def subagent_files(path):
+    """Subagent transcripts belonging to `path`, in Claude Code or Antigravity."""
+    if not CTX.is_agy_transcript(path):
+        stem = path[: -len(".jsonl")]
+        return sorted(glob.glob(os.path.join(stem, "subagents", "*.jsonl")))
+    bdir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(path))))
+    found, queue, seen = [], [path], set()
+    while queue:
+        cur = queue.pop(0)
+        for cid, tname in CTX.agy_spawned_subagents(cur):
+            if cid in seen:
+                continue
+            seen.add(cid)
+            child = os.path.join(bdir, cid, ".system_generated", "logs", "transcript.jsonl")
+            if os.path.isfile(child):
+                if tname:
+                    AGY_AGENT_TYPES[child] = tname
+                found.append(child)
+                queue.append(child)
+    return found
+
+
 def lanes(main_files):
     """(main transcripts, the subagent transcripts belonging to them)."""
     subs = []
     for path in main_files:
-        stem = path[: -len(".jsonl")]
-        subs.extend(sorted(glob.glob(os.path.join(stem, "subagents", "*.jsonl"))))
+        subs.extend(subagent_files(path))
     return main_files, subs
 
 
 def first_branch(path):
     """The first git branch a transcript recorded, which names the task it ran."""
+    agy = CTX.is_agy_transcript(path)
     try:
         with open(path, errors="ignore") as handle:
             for line in handle:
-                branch = (json.loads(line) if line.strip() else {}).get("gitBranch")
+                if not line.strip():
+                    continue
+                if agy:
+                    hit = AGY_BRANCH.search(line)
+                    if hit and hit.group(1) != "HEAD":
+                        return hit.group(1)
+                    continue
+                branch = json.loads(line).get("gitBranch")
                 if branch and branch != "HEAD":
                     return branch
     except (OSError, ValueError):
@@ -235,13 +279,12 @@ def by_session(main_files, since=None, until=None):
     """One row per session, its agents included, oldest first."""
     rows = []
     for path in main_files:
-        stem = path[: -len(".jsonl")]
-        subs = sorted(glob.glob(os.path.join(stem, "subagents", "*.jsonl")))
+        subs = subagent_files(path)
         days = sorted(u["_ts"][:10] for u in CTX.read_usage(path) if u.get("_ts"))
         row = totals([path] + subs, since, until)
         if not row["requests"]:
             continue
-        row.update(session=os.path.basename(stem)[:8], branch=first_branch(path),
+        row.update(session=CTX.session_id(path)[:8], branch=first_branch(path),
                    day=days[0] if days else "", agents=len(subs))
         rows.append(row)
     return sorted(rows, key=lambda r: r["day"])
@@ -282,7 +325,15 @@ def load_prices(where):
 
 def resolve(cfg, args):
     if args.all:
-        return sorted(glob.glob(os.path.join(cfg, "projects", "*", "*.jsonl"))), "every project"
+        files = sorted(glob.glob(os.path.join(cfg, "projects", "*", "*.jsonl")))
+        brains = CTX.agy_brain_dirs()
+        if brains:
+            sub_ids = CTX.agy_all_subagent_ids(brains)
+            for bdir in brains:
+                for p in sorted(glob.glob(os.path.join(bdir, "*", ".system_generated", "logs", "transcript.jsonl"))):
+                    if CTX.session_id(p) not in sub_ids:
+                        files.append(p)
+        return files, "every project"
     # An explicit flag names what to read. The environment only says where this
     # command happens to be running, so it answers last.
     if args.session:
@@ -293,17 +344,24 @@ def resolve(cfg, args):
     if args.project:
         project = os.path.join(cfg, "projects", CTX.slug_for(os.path.abspath(args.project)))
         files = sorted(glob.glob(os.path.join(project, "*.jsonl")))
+        files.extend(CTX.agy_transcripts_for_project(args.project))
         return files, "every transcript for " + args.project
-    session = os.environ.get("CLAUDE_CODE_SESSION_ID")
+    session = os.environ.get("CLAUDE_CODE_SESSION_ID") or (
+        os.environ.get("ANTIGRAVITY_CONVERSATION_ID") if CTX.agy_brain_dirs() else ""
+    )
     if session:
         hit = CTX.find_session(cfg, session)
         if hit:
             return [hit], "session " + session[:8]
         return [], "session " + session[:8] + ", no transcript"
     project = os.path.join(cfg, "projects", CTX.slug_for(os.getcwd()))
+    candidates = []
     newest = CTX.newest_transcript(project)
     if newest:
-        return [newest], "newest transcript for this directory"
+        candidates.append(newest)
+    candidates.extend(CTX.agy_transcripts_for_project(os.getcwd()))
+    if candidates:
+        return [max(candidates, key=os.path.getmtime)], "newest transcript for this directory"
     return [], "no transcript for this directory"
 
 

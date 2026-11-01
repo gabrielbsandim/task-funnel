@@ -60,7 +60,12 @@ VALUED = {"-H", "--header", "-q", "--jq", "-t", "--template", "-p", "--preview",
           "--hostname", "--cache"}
 DEFAULTS = {"max": 2000, "sectionMax": 600, "commentMax": 1000}
 LANE_MARK = re.compile(r"<!--\s*funnel:\s*(trivial|direct|risk)\s*-->")
-TASK_SKILL = re.compile(r'"skill"\s*:\s*"(?:[\w-]+:)?task"|<command-name>/?(?:[\w-]+:)?task</command-name>')
+TASK_SKILL = re.compile(
+    r'"skill"\s*:\s*"(?:[\w-]+:)?task"'
+    r"|<command-name>/?(?:[\w-]+:)?task</command-name>"
+    r"|/skills/task/SKILL\.md\b"
+    r"|<USER_REQUEST>\s*/(?:[\w-]+:)?task\b"
+)
 
 
 def load_pr_body():
@@ -290,6 +295,10 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except Exception:
         return 0
+    if "hook_event_name" not in payload and "tool_name" not in payload:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import host
+        return host.run_guard(check, payload, sys.argv[1] if len(sys.argv) > 1 else "PreToolUse")
     return check(payload)
 
 

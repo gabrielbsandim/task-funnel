@@ -190,6 +190,9 @@ jobs:
           pip install --quiet pyyaml
           python3 tests/test-export-skill.py
 
+      - name: Antigravity bundle, dual-protocol hooks and transcripts
+        run: python3 tests/test-antigravity.py
+
       - name: Frontmatter parses under a strict YAML parser
         run: |
           pip install --quiet pyyaml

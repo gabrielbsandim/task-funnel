@@ -90,7 +90,13 @@ def turn_entries(path):
 
     A user entry carrying only tool_result blocks is the transcript's way of
     handing a tool's output back, not a new instruction, so it does not open a turn.
+    Antigravity writes `USER_INPUT` and `PLANNER_RESPONSE` steps instead, and puts
+    untruncated tool arguments in `transcript_full.jsonl` next to `transcript.jsonl`.
     """
+    if os.path.basename(path) == "transcript.jsonl":
+        full = os.path.join(os.path.dirname(path), "transcript_full.jsonl")
+        if os.path.isfile(full):
+            path = full
     size = os.path.getsize(path)
     with open(path, "rb") as fh:
         if size > TAIL:
@@ -98,6 +104,7 @@ def turn_entries(path):
             fh.readline()
         raw = fh.read().decode("utf8", "replace").splitlines()
 
+    host_mod = None
     entries = []
     for line in reversed(raw):
         try:
@@ -107,17 +114,37 @@ def turn_entries(path):
         if entry.get("isSidechain"):
             continue
         kind = entry.get("type")
-        if kind not in ("user", "assistant"):
+        if kind in ("user", "assistant"):
+            entries.append(entry)
+            if kind == "user":
+                content = (entry.get("message") or {}).get("content")
+                blocks = content if isinstance(content, list) else []
+                only_results = blocks and all(
+                    isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks
+                )
+                if not only_results:
+                    break
             continue
-        entries.append(entry)
-        if kind == "user":
-            content = (entry.get("message") or {}).get("content")
-            blocks = content if isinstance(content, list) else []
-            only_results = blocks and all(
-                isinstance(b, dict) and b.get("type") == "tool_result" for b in blocks
-            )
-            if not only_results:
+        if kind == "USER_INPUT" and entry.get("source") == "USER_EXPLICIT":
+            entries.append({"type": "user", "message": {"content": entry.get("content") or ""}})
+            break
+        if kind == "SYSTEM_MESSAGE" and entry.get("source") == "SYSTEM":
+            body = entry.get("content") or ""
+            if "no command ran after it" in body or "no `kit gate` ran after it" in body:
                 break
+        if kind == "PLANNER_RESPONSE":
+            if host_mod is None:
+                sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+                import host as host_mod
+            blocks = []
+            for tc in entry.get("tool_calls") or []:
+                if not isinstance(tc, dict):
+                    continue
+                name, inp = host_mod.normalize_tool(
+                    tc.get("name") or "", tc.get("args") or {}, compact_args=True
+                )
+                blocks.append({"type": "tool_use", "name": name, "input": inp})
+            entries.append({"type": "assistant", "message": {"content": blocks}})
     return list(reversed(entries))
 
 
@@ -143,14 +170,11 @@ def verdict(entries):
     return pending
 
 
-def main():
-    if os.environ.get("KIT_PHASE_GATE", "").lower() in ("off", "0", "false"):
-        return 0
-    try:
-        payload = json.load(sys.stdin)
-    except ValueError:
-        return 0
+def check(payload: dict) -> int:
     if payload.get("stop_hook_active"):
+        return 0
+    reason = payload.get("termination_reason")
+    if reason and reason != "NO_TOOL_CALL":
         return 0
     path = payload.get("transcript_path")
     if not path or not os.path.exists(path):
@@ -166,6 +190,20 @@ def main():
         "and why, and stop again.\n" % pending
     )
     return 2
+
+
+def main():
+    if os.environ.get("KIT_PHASE_GATE", "").lower() in ("off", "0", "false"):
+        return 0
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if "hook_event_name" not in payload and "transcript_path" not in payload:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import host
+        return host.run_guard(check, payload, "Stop")
+    return check(payload)
 
 
 if __name__ == "__main__":

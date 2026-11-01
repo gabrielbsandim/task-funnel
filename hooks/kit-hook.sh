@@ -28,5 +28,9 @@ case "$1" in
 esac
 h=$(ls -d "${CLAUDE_CONFIG_DIR:-$HOME/.claude}"/plugins/cache/*/task-funnel/*/hooks/"$1" 2>/dev/null |
   sort -V | tail -1)
+if [ -z "$h" ] && { [ -n "${ANTIGRAVITY_CONFIG_DIR:-}" ] || [ -z "${CLAUDE_CONFIG_DIR:-}" ]; }; then
+  agy_h="${ANTIGRAVITY_CONFIG_DIR:-$HOME/.gemini/config}/plugins/task-funnel/hooks/$1"
+  [ -f "$agy_h" ] && h="$agy_h"
+fi
 [ -n "$h" ] || exit 0
 exec python3 "$h"
