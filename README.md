@@ -87,15 +87,28 @@ Method, every case and every run: [`evals/README.md`](evals/README.md).
 
 ## Install
 
+### Claude Code
+
 ```sh
 claude plugin marketplace add gabrielbsandim/task-funnel
 claude plugin install task-funnel@task-funnel
 /task-funnel:setup
 ```
 
+### Antigravity
+
+```sh
+git clone https://github.com/gabrielbsandim/task-funnel.git
+./task-funnel/scripts/kit setup
+```
+
+`kit setup` links `kit` onto `PATH` and installs the Antigravity bundle (with converted
+agent models, tool allowlists and root `hooks.json`) under `~/.gemini/config/plugins/task-funnel`.
+Each release also attaches `task-funnel-antigravity.zip` for manual installation.
+
 Needs `git`, `jq` and `python3` on Linux or macOS, and `gh` for GitHub issues, pull
-requests and Projects. Claude Code only: claude.ai chat cannot run the scripts and hooks
-the funnel is made of. Coming from `claude-kit`? See
+requests and Projects. Web chat surfaces that cannot run local scripts and hooks are not
+supported. Coming from `claude-kit`? See
 [Upgrading](docs/reference.md#upgrading-from-claude-kit).
 
 ## What every lane keeps

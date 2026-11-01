@@ -18,7 +18,11 @@ when this was added, over the wider "exempt tests/ anywhere".
 import json
 import os
 
-MANIFEST = os.path.join(".claude-plugin", "plugin.json")
+MANIFESTS = (
+    os.path.join(".claude-plugin", "plugin.json"),
+    os.path.join(".antigravity-plugin", "plugin.json"),
+    "plugin.json",
+)
 PLUGIN_NAME = "task-funnel"
 
 
@@ -26,15 +30,16 @@ def _root_of(path: str):
     """The checkout that owns `path`, if it is one of this plugin's."""
     current = os.path.dirname(os.path.abspath(path))
     while True:
-        manifest = os.path.join(current, MANIFEST)
-        if os.path.isfile(manifest):
-            try:
-                with open(manifest, encoding="utf-8") as handle:
-                    if json.load(handle).get("name") == PLUGIN_NAME:
-                        return current
-            except (OSError, ValueError):
+        for rel in MANIFESTS:
+            manifest = os.path.join(current, rel)
+            if os.path.isfile(manifest):
+                try:
+                    with open(manifest, encoding="utf-8") as handle:
+                        if json.load(handle).get("name") == PLUGIN_NAME:
+                            return current
+                except (OSError, ValueError):
+                    return None
                 return None
-            return None
         parent = os.path.dirname(current)
         if parent == current:
             return None

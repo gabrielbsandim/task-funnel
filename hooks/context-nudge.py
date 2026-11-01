@@ -67,7 +67,16 @@ def to_terminal(line):
         pass
 
 
-def quiet(msg=None, banner=None):
+def quiet(msg=None, banner=None, antigravity=False):
+    if antigravity:
+        if msg:
+            step = {"systemMessage": {"systemMessage": msg}}
+            if banner:
+                step["systemMessage"]["metadata"] = {"user_markdown": banner}
+            print(json.dumps({"injectSteps": [step]}))
+        else:
+            print("{}")
+        sys.exit(0)
     if banner:
         to_terminal(banner)
     if msg:
@@ -76,12 +85,17 @@ def quiet(msg=None, banner=None):
     sys.exit(0)
 
 
-def config_dir():
+def config_dir(antigravity=False):
+    if antigravity:
+        if "ANTIGRAVITY_CONFIG_DIR" in os.environ:
+            return os.environ["ANTIGRAVITY_CONFIG_DIR"]
+        if "CLAUDE_CONFIG_DIR" not in os.environ:
+            return os.path.join(os.path.expanduser("~"), ".gemini", "config")
     return os.environ.get("CLAUDE_CONFIG_DIR") or os.path.join(os.path.expanduser("~"), ".claude")
 
 
-def state_path(session):
-    d = os.path.join(config_dir(), NAME)
+def state_path(session, antigravity=False):
+    d = os.path.join(config_dir(antigravity), NAME)
     try:
         os.makedirs(d, exist_ok=True)
     except OSError:
@@ -89,13 +103,17 @@ def state_path(session):
     return os.path.join(d, (session or "unknown")[:36] + ".json")
 
 
-def newest_context_bin():
+def newest_context_bin(antigravity=False):
     """The newest installed copy, so the hook is not pinned to one release.
 
     Registering a versioned path is what made the freshness hook the next thing to
     go stale, and this hook would inherit that.
     """
     import glob
+    if antigravity:
+        agy_bin = os.path.join(config_dir(True), "plugins", "task-funnel", "scripts", "context")
+        if os.path.exists(agy_bin):
+            return agy_bin
     hits = glob.glob(os.path.join(config_dir(), "plugins", "cache", "*", "task-funnel", "*", "scripts", "context"))
     if hits:
         return sorted(hits)[-1]
@@ -110,11 +128,22 @@ def main():
         payload = json.loads(raw) if raw.strip() else {}
     except ValueError:
         payload = {}
-    session = payload.get("session_id") or os.environ.get("CLAUDE_CODE_SESSION_ID") or ""
+    antigravity = "conversationId" in payload or (
+        "session_id" not in payload
+        and "CLAUDE_CONFIG_DIR" not in os.environ
+        and bool(os.environ.get("ANTIGRAVITY_CONVERSATION_ID"))
+    )
+    session = (
+        payload.get("session_id")
+        or payload.get("conversationId")
+        or os.environ.get("CLAUDE_CODE_SESSION_ID")
+        or (os.environ.get("ANTIGRAVITY_CONVERSATION_ID") if antigravity else "")
+        or ""
+    )
 
-    binary = newest_context_bin()
+    binary = newest_context_bin(antigravity=antigravity)
     if not binary:
-        quiet()
+        quiet(antigravity=antigravity)
 
     cmd = [sys.executable, binary, "--json"]
     window = os.environ.get("KIT_NUDGE_WINDOW")
@@ -125,16 +154,16 @@ def main():
     try:
         done = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
     except (OSError, subprocess.SubprocessError):
-        quiet()
+        quiet(antigravity=antigravity)
     if done.returncode != 0:
-        quiet()
+        quiet(antigravity=antigravity)
     try:
         data = json.loads(done.stdout)
     except ValueError:
-        quiet()
+        quiet(antigravity=antigravity)
 
     verdict = data.get("verdict")
-    path = state_path(session)
+    path = state_path(session, antigravity=antigravity)
     said = ""
     if path and os.path.exists(path):
         try:
@@ -153,12 +182,12 @@ def main():
             pass
 
     if verdict not in LOUD:
-        quiet()
+        quiet(antigravity=antigravity)
     # Once per arrival in a band, not once per prompt.
     if verdict == said:
-        quiet()
+        quiet(antigravity=antigravity)
 
-    quiet(banner=(
+    quiet(antigravity=antigravity, banner=(
         f"kit context: {verdict} \u00b7 {data.get('free_pct')}% of the window free \u00b7 "
         f"a prefix rewrite now would cost about US$ {data.get('one_rewrite_now')} \u00b7 "
         f"{'compact at the end of this unit of work' if verdict == 'AT THE NEXT BOUNDARY' else 'run /compact'}"

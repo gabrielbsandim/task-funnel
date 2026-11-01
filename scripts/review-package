@@ -476,6 +476,9 @@ Run the gates on the fix and write one decision per finding still open."
     done
     model="$("$CFG" get ".reviewModel.\"$level\"?" 2>/dev/null || true)"
     case "$model" in null|"") model="" ;; esac
+    if [ -n "${ANTIGRAVITY_AGENT:-}" ] && [ -n "$model" ]; then
+      case "$model" in sonnet) model=flash ;; opus) model=pro ;; haiku) model=flash_lite ;; esac
+    fi
     n=0
     printf 'lane   %s, round %s of %s\n' "$LANE" "$ROUND" "${cap:-1}"
     printf 'effort %s%s\n' "$level" "${since:+, fix round since ${since:0:8}}"

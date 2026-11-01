@@ -29,8 +29,8 @@ never touch the network.
 - **Writes your settings only when you run it:** `kit env-access open|guarded` writes
   one `env` key into the repository's `.claude/settings.local.json`.
 - **Reads outside the repository:** `kit usage` and `kit context` read this
-  machine's Claude Code transcripts under `~/.claude/projects/` to count tokens,
-  locally.
+  machine's Claude Code transcripts under `~/.claude/projects/` and Antigravity
+  transcripts under `~/.gemini/antigravity*/brain/` to count tokens, locally.
 - **Only if you opt in:** the extra hooks under [Hooks](#hooks) are copied into
   `~/.claude/hooks/` and registered in your settings by you, never by the plugin.
   `plugin-freshness` runs `claude plugin update` at most once every 6 hours.
@@ -108,6 +108,7 @@ These are commands rather than instructions, because prose does not execute:
 | `kit usage` | guessing what a dispatched stage costs. A subagent's usage is never written into its parent transcript, it lives under `<project>/<session>/subagents/`, so a reader that globs only the parent reports every agent as free. Measured across every transcript on this machine, 2026-08-23: 350 subagent transcripts, 15759 requests, 19.6% of all tokens. Since 0.10.0 `--since`, `--until` and `--by-stage` answer the next question, whether a change to the funnel paid: they cut on each request's own day and print the cost per execution per stage. Measured with them on 2026-08-29, the subagent lane went from 9.9% of all tokens in the thirteen days before the funnel to 50.0% in the thirteen after. Rates are per model, because one Opus rate over a run where two stages are on Sonnet reports those stages at about 2.5 times what they cost. Since 0.15.0 they are per version too, since one family spans list prices three times apart, a repo's `prices` overrides them for a provider that is not on the list, a stage is read from the agent type the harness records beside each transcript before the prompt is guessed at, and `--by-session` prints the cost per session with its branch. `--project` reads every transcript of that directory and wins over `CLAUDE_CODE_SESSION_ID`: until then the variable won, and the same command run inside a session answered for 1 session of a project that had 6. `--by-branch` sums the sessions of each branch, which is the cost per pull request: measured 2026-10-19 over the week before, one branch had run in 12 sessions. Every lane and row carries `cache%`, the share of input read from cache. |
 | `kit review --disjoint a b` | guessing whether two stages can run in parallel. It answers from the file lists. |
 | `kit export-skill <name>` | a skill copied out of the plugin that still calls `kit` or a funnel agent where nothing provides them. It packages one skill as a standalone SKILL.md folder for other agents and marketplaces, applying the exact-text replacements in `export/<name>.json`, and refuses with exit 3 while anything only this plugin has is still named, or with exit 2 when a replacement no longer matches the skill. `investigate` and `note` export today; `task` is refused on purpose. |
+| `kit export-antigravity` | running two copies of the source to satisfy two strict plugin validators. Claude Code's validator requires `model: sonnet` on the cheaper agents, `hooks/hooks.json` and `commands/`, while Antigravity's `agy plugin validate --strict` rejects `sonnet`, comma-separated `tools:` strings, dot-prefixed logos, `commands/` and `hooks/hooks.json`. `kit export-antigravity` builds or installs (`--install`, `--zip`) the Antigravity bundle from the single source tree, mapping `sonnet` to `flash`, converting `commands/setup.md` to `skills/setup/SKILL.md`, and keeping both strict validators at zero warnings. |
 | `kit escapes` | not knowing whether review catches anything. A merged pull request followed within 14 days by a merged fix or revert sharing a source file is an escape, with files most pull requests touch and tests, docs and migrations excluded. Per lane, from the `<!-- funnel: ... -->` marker the body carries, and per month. `--case N --out evals` drafts an eval case from one escape. |
 | `kit eval-delta <run.json>...` | an eval threshold the bare model passes too. It pools runs of `claude plugin eval --ablation with-without` and prints, per case, the score with the plugin, without it, the delta and the cost of each arm. On the runs of 2026-10-20, 3 of 6 outcome cases scored the same either way. |
 | `kit env-access [open\|guarded]` | a sandbox and a hook refusing `.env` reads in a repository where you want the agent to manage them. `open` writes `KIT_ENV_ACCESS=open` into this repository's `.claude/settings.local.json`, which worktrees inherit, and env-guard then lets `.env*` through there; `.claude.json` and `.mcp.json` stay guarded. With no argument it prints the level, where it came from, and any `Read(...)` deny rule in your settings that still covers this repository's env files, since a deny wins. The agent cannot run `open` itself: env-guard refuses it, so the choice stays yours, typed as `! kit env-access open`. |
@@ -119,13 +120,13 @@ larger than the original commit is not a round, it is the spec having been wrong
 
 ### Which model each stage runs
 
-| Agent | Model | Lane |
-| --- | --- | --- |
-| `funnel-triage` | inherit | risk |
-| `funnel-test-writer` | sonnet | risk |
-| `funnel-reviewer` | sonnet | direct, risk |
-| `funnel-verifier` | sonnet | direct, risk |
-| `funnel-screen-lens` | inherit | risk, when a screen moved |
+| Agent | Claude Code | Antigravity | Lane |
+| --- | --- | --- | --- |
+| `funnel-triage` | inherit | inherit | risk |
+| `funnel-test-writer` | sonnet | flash | risk |
+| `funnel-reviewer` | sonnet | flash | direct, risk |
+| `funnel-verifier` | sonnet | flash | direct, risk |
+| `funnel-screen-lens` | inherit | inherit | risk, when a screen moved |
 
 The criterion is **how a stage's mistakes surface**. A test writer's mistake fails
 `kit gate` in front of you, out loud. A reviewer's input is a diff file already
@@ -434,6 +435,7 @@ python3 tests/grader-selftest.py       # every llm grader has a good and a bad e
 python3 tests/test-eval-control.py     # 15 cases: the control suite and the pairing eval-delta reads
 python3 tests/test-skill-size.py       # every SKILL.md under the 20,000 a compaction keeps, and what moved out
 python3 tests/test-review-contract.py  # SPEC-MANDATED, TRIPWIRE and the screen lens probes, end to end in the prose
+python3 tests/test-antigravity.py      # 66 cases: the Antigravity bundle, agy --strict, dual-protocol hooks, brain transcripts
 claude plugin validate . --strict      # manifests, skills, agents, commands
 npx agnix@0.49.0 .                     # the external spec linter, configured by .agnix.toml
 ```

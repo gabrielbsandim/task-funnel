@@ -29,7 +29,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 
 # Trigger substrings, one per guard. A guard runs only when its trigger appears
 # in the text the guard would read. Keep these as supersets: see the docstring.
-ENV_MARKERS = (".env", ".claude.json", ".mcp.json", "env-access")
+ENV_MARKERS = (".env", ".claude.json", ".mcp.json", "mcp_config.json", "env-access")
 # Escaped on purpose: this file must not contain the literal it looks for.
 DASH = "\u2014"
 
@@ -75,7 +75,14 @@ def pre_tool_use(payload: dict) -> int:
     if tool in ("Write", "Edit", "NotebookEdit"):
         # No prefilter: this path compares against what is on disk, so the
         # decision needs the file, not a substring of the payload.
-        return load("protect-tests").check(payload)
+        code = load("protect-tests").check(payload)
+        if code:
+            return code
+        # Antigravity PostToolUse carries no message channel back to the model,
+        # so the opt-in em dash check runs before the write lands instead.
+        if payload.get("_antigravity"):
+            return post_tool_use(payload)
+        return 0
 
     return 0
 
@@ -112,6 +119,17 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except Exception:
         return 0
+    if "hook_event_name" not in payload and "tool_name" not in payload:
+        try:
+            host = load("host")
+            hint = sys.argv[1] if len(sys.argv) > 1 else ""
+            return host.run_guard(
+                lambda p: EVENTS.get(p.get("hook_event_name") or "", lambda _: 0)(p),
+                payload,
+                hint,
+            )
+        except Exception:
+            return 0
     handler = EVENTS.get(payload.get("hook_event_name") or "")
     if handler is None:
         return 0

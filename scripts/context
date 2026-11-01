@@ -89,6 +89,9 @@ PRICES = {
     "sonnet": {"in": 2.0, "out": 10.0, "cw": 2.50, "cr": 0.20},
     "haiku": {"in": 1.0, "out": 5.0, "cw": 1.25, "cr": 0.10},
     "fable": {"in": 10.0, "out": 50.0, "cw": 12.50, "cr": 1.00},
+    "gemini-pro": {"in": 2.0, "out": 12.0, "cw": 2.50, "cr": 0.20},
+    "gemini-flash": {"in": 0.50, "out": 3.0, "cw": 0.625, "cr": 0.05},
+    "flash_lite": {"in": 0.10, "out": 0.40, "cw": 0.125, "cr": 0.01},
 }
 
 
@@ -141,6 +144,12 @@ def rates_for(model):
     for family in ("haiku", "sonnet", "fable"):
         if family in name:
             return PRICES[family]
+    if "flash_lite" in name or "flash-lite" in name:
+        return PRICES["flash_lite"]
+    if "flash" in name:
+        return PRICES["gemini-flash"]
+    if "gemini" in name:
+        return PRICES["gemini-pro"]
     return PRICES["opus"]
 
 
@@ -167,6 +176,130 @@ def slug_for(path):
     return "-" + path.strip("/").replace("/", "-")
 
 
+SUBAGENT_MARK = "Created the following subagents:"
+SUBAGENT_ID = re.compile(r'"conversationId"\s*:\s*"([0-9a-fA-F-]{8,})"')
+AGY_STEP_HDR = re.compile(r"^(?:(?:Created|Completed) At:[^\n]*\n)+")
+
+
+def _unwrap_agy_val(val):
+    if isinstance(val, str) and len(val) >= 2 and val[0] in ('"', "[", "{"):
+        try:
+            return json.loads(val)
+        except ValueError:
+            pass
+    return val
+
+
+def agy_spawned_subagents(path):
+    """[(conversation_id, agent_type)] spawned via invoke_subagent in `path`."""
+    full = os.path.join(os.path.dirname(path), "transcript_full.jsonl")
+    source = full if os.path.isfile(full) else path
+    own_id = session_id(path)
+    out, pending = [], []
+    try:
+        with open(source, errors="ignore") as fh:
+            for line in fh:
+                if SUBAGENT_MARK not in line and "invoke_subagent" not in line:
+                    continue
+                try:
+                    row = json.loads(line)
+                except ValueError:
+                    continue
+                rtype = row.get("type")
+                if rtype == "PLANNER_RESPONSE":
+                    for tc in row.get("tool_calls") or []:
+                        if not isinstance(tc, dict) or tc.get("name") != "invoke_subagent":
+                            continue
+                        args = tc.get("args") if isinstance(tc.get("args"), dict) else {}
+                        tname = _unwrap_agy_val(args.get("TypeName"))
+                        if isinstance(tname, str) and tname:
+                            pending.append(tname)
+                            continue
+                        subs = _unwrap_agy_val(args.get("Subagents"))
+                        if isinstance(subs, list):
+                            for item in subs:
+                                pending.append((item.get("TypeName") or "") if isinstance(item, dict) else "")
+                elif rtype == "GENERIC":
+                    content = row.get("content")
+                    if not isinstance(content, str):
+                        continue
+                    body = AGY_STEP_HDR.sub("", content).lstrip()
+                    if not body.startswith(SUBAGENT_MARK):
+                        continue
+                    for cid in SUBAGENT_ID.findall(body):
+                        tname = pending.pop(0) if pending else ""
+                        if cid != own_id:
+                            out.append((cid, tname))
+    except OSError:
+        pass
+    return out
+
+
+def agy_brain_dirs():
+    """Antigravity brain roots, disabled when CLAUDE_CONFIG_DIR isolates a test."""
+    if "ANTIGRAVITY_BRAIN_DIR" in os.environ:
+        val = os.environ["ANTIGRAVITY_BRAIN_DIR"]
+        return [val] if val and os.path.isdir(val) else []
+    if "CLAUDE_CONFIG_DIR" in os.environ:
+        return []
+    candidates = []
+    app = os.environ.get("ANTIGRAVITY_APP_DATA_DIR")
+    if app:
+        candidates.append(os.path.join(app, "brain"))
+    candidates.extend(sorted(glob.glob(os.path.expanduser("~/.gemini/antigravity*/brain"))))
+    out, seen = [], set()
+    for d in candidates:
+        real = os.path.realpath(d)
+        if real not in seen and os.path.isdir(d):
+            seen.add(real)
+            out.append(d)
+    return out
+
+
+def is_agy_transcript(path):
+    return os.path.basename(path) in ("transcript.jsonl", "transcript_full.jsonl") and (
+        os.path.basename(os.path.dirname(path)) == "logs"
+    )
+
+
+def session_id(path):
+    if is_agy_transcript(path):
+        return os.path.basename(os.path.dirname(os.path.dirname(os.path.dirname(path))))
+    return os.path.splitext(os.path.basename(path))[0]
+
+
+def agy_all_subagent_ids(brain_dirs):
+    """Conversation ids spawned by `invoke_subagent`, so main scans skip them."""
+    ids = set()
+    for bdir in brain_dirs:
+        for path in glob.glob(os.path.join(bdir, "*", ".system_generated", "logs", "transcript.jsonl")):
+            for cid, _ in agy_spawned_subagents(path):
+                ids.add(cid)
+    return ids
+
+
+def agy_transcripts_for_project(project_dir):
+    """Main Antigravity transcripts that worked inside `project_dir`."""
+    brains = agy_brain_dirs()
+    if not brains or not project_dir:
+        return []
+    target = os.path.abspath(project_dir).rstrip("/")
+    pattern = re.compile(re.escape(target) + r'(?:[/\\"\'\s]|$)')
+    sub_ids = agy_all_subagent_ids(brains)
+    hits = []
+    for bdir in brains:
+        for path in sorted(glob.glob(os.path.join(bdir, "*", ".system_generated", "logs", "transcript.jsonl"))):
+            if session_id(path) in sub_ids:
+                continue
+            try:
+                with open(path, errors="ignore") as fh:
+                    if pattern.search(fh.read(32768)):
+                        hits.append(path)
+            except OSError:
+                continue
+    return hits
+
+
 def find_session(cfg, session):
     """A named session, looked for under every project rather than one.
 
@@ -175,7 +308,13 @@ def find_session(cfg, session):
     transcript" for a file that existed.
     """
     hits = sorted(glob.glob(os.path.join(cfg, "projects", "*", session + "*.jsonl")))
-    return hits[0] if hits else None
+    if hits:
+        return hits[0]
+    for bdir in agy_brain_dirs():
+        agy = sorted(glob.glob(os.path.join(bdir, session + "*", ".system_generated", "logs", "transcript.jsonl")))
+        if agy:
+            return agy[0]
+    return None
 
 
 def newest_transcript(project_dir):
@@ -200,6 +339,7 @@ def read_session(path):
     out = []
     seen = set()
     epoch = 0
+    agy_model = "gemini-pro"
     with open(path, errors="ignore") as handle:
         for line in handle:
             line = line.strip()
@@ -209,8 +349,40 @@ def read_session(path):
                 row = json.loads(line)
             except ValueError:
                 continue
-            if row.get("subtype") == "compact_boundary":
+            if row.get("subtype") == "compact_boundary" or row.get("type") == "CHECKPOINT":
                 epoch += 1
+                continue
+            if row.get("type") == "USER_INPUT":
+                text = (row.get("content") or "").lower()
+                if "<user_settings_change>" in text:
+                    if "flash lite" in text or "flash_lite" in text:
+                        agy_model = "flash_lite"
+                    elif "flash" in text:
+                        agy_model = "gemini-flash"
+                    elif "gemini" in text or "pro" in text or "argon" in text:
+                        agy_model = "gemini-pro"
+                continue
+            if row.get("type") == "PLANNER_RESPONSE":
+                if (
+                    row.get("input_tokens") is None
+                    and row.get("output_tokens") is None
+                    and row.get("cache_read_tokens") is None
+                ):
+                    continue
+                key = ("agy", row.get("step_index"))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append({
+                    "input_tokens": int(row.get("input_tokens") or 0),
+                    "output_tokens": int(row.get("output_tokens") or 0),
+                    "cache_creation_input_tokens": 0,
+                    "cache_read_input_tokens": int(row.get("cache_read_tokens") or 0),
+                    "_model": row.get("model") or agy_model,
+                    "_ts": row.get("created_at") or "",
+                    "_epoch": epoch,
+                    "_host": "antigravity",
+                })
                 continue
             message = row.get("message") or {}
             usage = message.get("usage")
@@ -238,6 +410,11 @@ def is_rewrite(u):
     conversation extends; it is the collapsed `cache_read` beside it that says the
     prefix missed rather than grew.
     """
+    if u.get("_host") == "antigravity":
+        return (
+            u.get("cache_read_input_tokens", 0) < 50_000
+            and u.get("input_tokens", 0) > 100_000
+        )
     return (
         u.get("cache_read_input_tokens", 0) < 50_000
         and u.get("cache_creation_input_tokens", 0) > 100_000
@@ -306,20 +483,28 @@ def main(argv):
         return 0
 
     cfg = os.environ.get("CLAUDE_CONFIG_DIR", os.path.expanduser("~/.claude"))
-    wanted = args.session or os.environ.get("CLAUDE_CODE_SESSION_ID", "")
+    agy_session = os.environ.get("ANTIGRAVITY_CONVERSATION_ID", "") if agy_brain_dirs() else ""
+    wanted = args.session or os.environ.get("CLAUDE_CODE_SESSION_ID", "") or agy_session
     guessed = False
 
     path = find_session(cfg, wanted) if wanted else None
     if not path:
         guessed = bool(wanted)
         project = args.project or os.path.join(cfg, "projects", slug_for(os.getcwd()))
-        if not os.path.isdir(project):
-            print(f"no transcripts for this directory under {project}", file=sys.stderr)
+        candidates = []
+        if os.path.isdir(project):
+            hit = newest_transcript(project)
+            if hit:
+                candidates.append(hit)
+        if not args.project:
+            candidates.extend(agy_transcripts_for_project(os.getcwd()))
+        if not candidates:
+            if not os.path.isdir(project):
+                print(f"no transcripts for this directory under {project}", file=sys.stderr)
+            else:
+                print(f"no transcript in {project}", file=sys.stderr)
             return 2
-        path = newest_transcript(project)
-        if not path:
-            print(f"no transcript in {project}", file=sys.stderr)
-            return 2
+        path = max(candidates, key=os.path.getmtime)
 
     reqs, epochs = read_session(path)
     if not reqs:
@@ -328,14 +513,18 @@ def main(argv):
 
     # The id, without the extension: a short filename truncated to eight characters
     # printed "edge2.js" as if it were a session id.
-    who = os.path.splitext(os.path.basename(path))[0][:8]
+    who = session_id(path)[:8]
     tag = f"session {who}" + ("  (guessed: the named session has no transcript yet)" if guessed else "")
     last = reqs[-1]
     if last["_epoch"] < epochs:
         return report_fresh(args, who, tag, reqs)
     # What the next request will have to read: everything cached plus what this
     # one just added. This is the number the prefix rewrite would be charged on.
-    used = last.get("cache_read_input_tokens", 0) + last.get("cache_creation_input_tokens", 0)
+    used = (
+        last.get("cache_read_input_tokens", 0)
+        + last.get("cache_creation_input_tokens", 0)
+        + (last.get("input_tokens", 0) if last.get("_host") == "antigravity" else 0)
+    )
     free_pct = max(0, round((args.window - used) * 100 / args.window))
     verdict, advice = band(used, free_pct)
     payback = payback_turns(used)

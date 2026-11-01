@@ -110,4 +110,5 @@ jobs:
           for manifest in export/*.json; do
             python3 scripts/export-skill "$(basename "$manifest" .json)" --out dist --zip
           done
+          python3 scripts/export-antigravity --out dist --zip
           gh release upload "v$VERSION" dist/*.zip --clobber

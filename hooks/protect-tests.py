@@ -139,6 +139,9 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except Exception:
         return 0
+    if "hook_event_name" not in payload and "tool_name" not in payload:
+        import host
+        return host.run_guard(check, payload, sys.argv[1] if len(sys.argv) > 1 else "PreToolUse")
     return check(payload)
 
 

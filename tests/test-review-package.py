@@ -61,16 +61,19 @@ def write(root, path, text):
         fh.write(text)
 
 
+CLEAN_ENV = {k: v for k, v in os.environ.items() if not k.startswith("ANTIGRAVITY_")}
+
+
 def run(root, *args):
     """A plan with the round count cleared first: the cases below are about slices,
     and section 11 is the one about the cap."""
     extra = ["--reset-rounds"] if "--dispatches" in args else []
-    out = subprocess.run([RP] + list(args) + extra, cwd=root, capture_output=True, text=True)
+    out = subprocess.run([RP] + list(args) + extra, cwd=root, capture_output=True, text=True, env=CLEAN_ENV)
     return out.stdout + out.stderr
 
 
 def raw(root, *args):
-    return subprocess.run([RP] + list(args), cwd=root, capture_output=True, text=True)
+    return subprocess.run([RP] + list(args), cwd=root, capture_output=True, text=True, env=CLEAN_ENV)
 
 
 def dispatched(text):

@@ -94,14 +94,11 @@ def pending(entries, is_code):
     return last
 
 
-def main():
-    if os.environ.get("KIT_GATE_RECEIPT", "").lower() in ("off", "0", "false"):
-        return 0
-    try:
-        payload = json.load(sys.stdin)
-    except ValueError:
-        return 0
+def check(payload: dict) -> int:
     if payload.get("stop_hook_active"):
+        return 0
+    reason = payload.get("termination_reason")
+    if reason and reason != "NO_TOOL_CALL":
         return 0
     path = payload.get("transcript_path")
     if not path or not os.path.exists(path):
@@ -119,6 +116,20 @@ def main():
         )
         return 2
     return 0
+
+
+def main():
+    if os.environ.get("KIT_GATE_RECEIPT", "").lower() in ("off", "0", "false"):
+        return 0
+    try:
+        payload = json.load(sys.stdin)
+    except ValueError:
+        return 0
+    if "hook_event_name" not in payload and "transcript_path" not in payload:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        import host
+        return host.run_guard(check, payload, "Stop")
+    return check(payload)
 
 
 if __name__ == "__main__":
