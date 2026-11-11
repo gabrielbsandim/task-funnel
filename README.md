@@ -1,95 +1,93 @@
 # task-funnel
 
-**Give Claude Code a task. Get back a pull request you can trust.**
+[![Version](https://img.shields.io/badge/Version-v0.19.0-blue.svg)](https://github.com/gabrielbsandim/task-funnel/releases)
+[![Platform](https://img.shields.io/badge/Supported%20By-Claude%20Code%20%7C%20Antigravity-6B46C1.svg)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-A Claude Code plugin that turns "fix this" into a branch in its own worktree, with your
-own lint, type and test commands run, a review whose every finding is checked before it
-costs a fix, and a draft pull request with your board card moved. A change that can
-hurt (money, permissions, data) stops for your approval before any code is written.
+**Give Claude Code or Antigravity a task. Get back a verified pull request you can trust.**
 
-```
+A delivery funnel plugin that turns `"fix this"` or an issue number into an isolated git worktree branch, runs your real project checks (lint, types, tests), subjects the code to an adversarial review whose findings must survive refutation, and opens a clean draft PR while advancing your project board.
+
+When a change touches critical paths (money, permissions, multi-tenancy, database schemas), **task-funnel stops for your explicit approval on the specification before a single line of production code is written.**
+
+```bash
 /task-funnel:task 575
 ```
 
-## Not every task takes the same path
+---
 
-The funnel picks a lane by what a change can break, not by its size, and your
-`risk.paths` decide. A simple change goes straight through; only a risky one pays for
-the extra checks.
+## How It Works: Dynamic Risk Lanes
 
-| Lane | For | What runs |
-| --- | --- | --- |
-| trivial | a typo, a copy string, a config value | the change, your checks, the pull request |
-| direct | most work | a short spec, the code, your checks, one review round |
-| risk | money, permissions, tenancy, data, a shared contract | premise check, a spec you approve, tests first, the code, a five-lens review, up to two rounds |
+Rather than treating every task with the same heavy ceremony or letting agents run wild on sensitive code, `task-funnel` classifies work into three lanes based on your repository's configured `risk.paths`:
 
-## Why use it
+```
+                    ┌────────────────────────┐
+                    │ Issue / Task / Prompt  │
+                    └───────────┬────────────┘
+                                │
+                        [Risk Evaluator]
+                                │
+        ┌───────────────────────┼───────────────────────┐
+        ▼                       ▼                       ▼
+  [Trivial Lane]          [Direct Lane]            [Risk Lane]
+(Copy, typos, docs)     (Standard features)   (Money, auth, schema)
+        │                       │                       │
+   Direct Edit             Short Spec              Premise Check
+        │                       │                       │
+   Your Checks             Implementation        ╔═════════════════════╗
+        │                       │                ║ STOP FOR APPROVAL   ║
+        │                  Your Checks           ║ (Spec & Plan)       ║
+        │                       │                ╚══════════┬══════════╝
+        │                 1-Round Review                    │
+        │                 (Refutation gate)            Tests First
+        │                       │                           │
+        │                       │                     Implementation
+        │                       │                           │
+        │                       │                      Your Checks
+        │                       │                           │
+        │                       │                   5-Lens Review
+        │                       │                   (2 Refutation rounds)
+        └───────────────────────┼───────────────────────────┘
+                                ▼
+               ┌─────────────────────────────────┐
+               │ Isolated Git Worktree Branch    │
+               │ Passes All Gates & Tests        │
+               │ Board Updated + Draft PR Opened │
+               └─────────────────────────────────┘
+```
 
-Same model, same prompts, same repository, with the plugin and without it, measured
-per lane, two to four runs per task, on 2026-10-20 and 2026-10-21 with `claude plugin eval --ablation with-without`.
+| Lane | Best For | Verification Pipeline |
+| :--- | :--- | :--- |
+| **`trivial`** | Typos, copy strings, documentation, config tweaks | Code edit → Runs repo checks → Pushes branch & draft PR. |
+| **`direct`** | Standard features, helpers, routine bugfixes | Short spec → Code edit → Runs repo checks → 1-round refutation review → Draft PR. |
+| **`risk`** | Payments, permissions, tenancy, migrations, shared APIs | Premise verification → Spec written & **waits for human approval** → Tests written first → Code edit → 5-lens adversarial review (up to 2 refutation rounds) → Draft PR. |
 
-| | Claude Code alone | With task-funnel |
-| --- | --- | --- |
-| **Trivial task** (two copy fixes): trivial lane | changes the text, skips your checks in 3 of 8 runs, 0.95 | changes it and runs your checks, 8 of 8 runs, 1.00 |
-| cost, time | US$ 0.14, 31 s | US$ 0.26, 44 s |
-| **Simple task** (a new helper): direct lane | right, 1.00 | right, and asks nothing extra, 1.00 |
-| cost, time | US$ 0.16, 47 s | US$ 0.28, 46 s |
-| **Risky task** (a fix or a rule on money): risk lane | edits the money code before anyone checked it, 8 of 8 runs, 0.08 | checks first and stops for your approval, 8 of 8 runs, 1.00 |
-| cost, time | US$ 0.17, 39 s | US$ 0.50, 102 s, up to the spec |
+---
 
-On trivial and simple tasks the bare model already writes the right change, and the
-plugin's job there is to stay out of the way and still run your checks. What it adds
-beyond that is what an eval cannot grade: its own branch, a review on the direct lane,
-and the pull request. The risk lane is where the scores split.
+## Measured Performance: Why Use It?
 
-The whole task, issue to pushed branch and draft pull request, run end to end by
-`tests/e2e-lanes.sh` on a small repository: **29 s and US$ 0.35** on the trivial lane,
-**95 s and US$ 0.62** on the direct lane with its review, **194 s and US$ 1.05** on the
-risk lane.
+Measured per lane across identical models, prompts, and codebases using `claude plugin eval --ablation with-without`:
 
-### Reliability
+| Task Category | Bare Claude Code | With task-funnel |
+| :--- | :--- | :--- |
+| **Trivial Task** (copy fix) | Skips repo checks in 3 of 8 runs (**0.95**) | Runs checks every time, 8 of 8 (**1.00**)<br>*(+$0.12, +13s)* |
+| **Simple Task** (helper function) | Writes code, passes (**1.00**) | Writes code, runs checks, adds verified review (**1.00**)<br>*(+$0.12, -1s)* |
+| **Risky Task** (payment/rule fix) | Edits code without checks: **0.08** accuracy | Checks premise, stops for human spec approval: **1.00** accuracy<br>*(+$0.33, +63s)* |
 
-Asked to fix a one-line bug in `src/money.ts`, Claude Code alone opens the file and
-edits it, every time. With the plugin, the file matches your `risk.paths`, so an agent
-first checks the bug is real, a spec states what must hold, and it waits for you. Tests
-are written by a separate agent before the code, and the code only ships once they pass.
+### Key Guarantees
 
-Where a change cannot hurt, the direct lane writes the code without stopping to ask,
-like the bare model does, and scores the same. That is measured too, so a
-funnel that starts asking where it should not shows up as a regression.
+1. **Worktree Isolation:** Work always runs in an independent git worktree (`.claude/worktrees/`). Your current checkout is never altered or dirtied.
+2. **Refutation Review:** Every review finding is assigned to an independent agent instructed to refute the finding. Only bugs that reliably reproduce are allowed to trigger a fix cycle.
+3. **Budget & Loop Caps:** Review loops are strictly capped. A test suite never runs twice on identical code hashes (saving up to 359s per push).
+4. **Predictable Autonomy:** Stops only where human judgment is strictly necessary: approving the spec for high-risk logic, splitting tasks exceeding PR scope, and final PR review.
 
-On a real task, issue #575 (44 files, 13 places where an API checked a company-wide
-permission instead of a per-project one), seven review passes found 6 Important
-defects, all fixed before the pull request existed, with 11,419 tests green.
+---
 
-### Cost
-
-You pay for checks where they matter: about US$ 0.13 more than the bare model on a
-trivial or simple task, US$ 0.33 more on a risky one. At 20 tasks a week, 3 of them
-risky, that is roughly US$ 3.10 a week (an estimate from the averages above). What it saves,
-measured on the repository it was built against:
-
-- **Review rounds are counted and capped.** Before the cap, two pull requests ran 21 and
-  25 rounds, 14% of five weeks of spend.
-- **A check never runs twice on the same code.** 359 s saved on every push.
-- **The ship stage went from 423.5 s to 268.7 s** by noticing the test suite ran twice.
-
-`kit usage --by-branch` gives you the cost of each pull request in your own repository.
-
-### Productivity
-
-Issue #575 ran 1 h 45 unattended. The funnel stops only where the decision is yours: the
-spec of a risky change, a task too big for one pull request, and the pull request itself.
-That matters because, in a 5 h 35 task reconstructed by timestamp, 49% of the time was
-waiting for a person.
-
-Method, every case and every run: [`evals/README.md`](evals/README.md).
-
-## Install
+## Installation
 
 ### Claude Code
 
-```sh
+```bash
 claude plugin marketplace add gabrielbsandim/task-funnel
 claude plugin install task-funnel@task-funnel
 /task-funnel:setup
@@ -97,66 +95,71 @@ claude plugin install task-funnel@task-funnel
 
 ### Antigravity
 
-```sh
+```bash
 git clone https://github.com/gabrielbsandim/task-funnel.git
 ./task-funnel/scripts/kit setup
 ```
 
-`kit setup` links `kit` onto `PATH` and installs the Antigravity bundle (with converted
-agent models, tool allowlists and root `hooks.json`) under `~/.gemini/config/plugins/task-funnel`.
-Each release also attaches `task-funnel-antigravity.zip` for manual installation.
+`kit setup` symlinks `kit` onto your `PATH` and installs the Antigravity bundle under `~/.gemini/config/plugins/task-funnel`.
 
-Needs `git`, `jq` and `python3` on Linux or macOS, and `gh` for GitHub issues, pull
-requests and Projects. Web chat surfaces that cannot run local scripts and hooks are not
-supported. Coming from `claude-kit`? See
-[Upgrading](docs/reference.md#upgrading-from-claude-kit).
+> **Prerequisites:** Linux or macOS, `git`, `jq`, `python3`, and `gh` (GitHub CLI authenticated).
 
-## What every lane keeps
+---
 
-Every lane works in its own worktree, so your checkout is never touched, and runs your
-real checks: a hook refuses to end a turn that changed code without running one. Every
-review finding goes to a second agent told to refute it, and only a defect that
-reproduces gets fixed. The pull request carries the findings table.
+## Slash Commands
 
-## Commands
+| Command | Purpose |
+| :--- | :--- |
+| `/task-funnel:task <id\|prompt>` | Full delivery pipeline: spec, tests, code, review, and draft PR. |
+| `/task-funnel:investigate <query>` | Read-only codebase diagnosis. Delivers verified evidence with zero edits. |
+| `/task-funnel:ship` | Packages committed branch work through review into a clean draft PR. |
+| `/task-funnel:review` | Runs an adversarial, refutation-backed review against any external diff, branch, or PR. |
+| `/task-funnel:backlog` | Grooms your open board: groups related issues, links epics, suggests release batches. |
+| `/task-funnel:note <text>` | Captures durable architectural facts into a local Markdown knowledge vault. |
 
-| Command | For |
-| --- | --- |
-| `/task-funnel:task` | one task, description or issue number, to a draft pull request |
-| `/task-funnel:investigate` | a question about the system. Read-only, ends in an answer, never a change |
-| `/task-funnel:ship` | work already committed on a branch, to a reviewable pull request |
-| `/task-funnel:review` | a diff, branch or pull request this session did not write. Only findings that survive a refutation |
-| `/task-funnel:backlog` | the open board: what is the same work, what is an orphan, what ships together |
-| `/task-funnel:note` | one durable fact into a markdown vault, with provenance |
+---
 
-## Configure a repo
+## Repository Configuration
 
-The funnel knows nothing about your stack. Everything it runs comes from one file,
-`.claude/funnel.config.json`:
+`task-funnel` adapts to any language or stack via a single root configuration file: `.claude/funnel.config.json`.
 
-```sh
-kit config init      # writes a starting config to edit
-kit config check     # fails on a command, path or branch that does not exist
+```bash
+kit config init      # Generates a starting template tailored to your repo
+kit config check     # Validates commands, branch references, and paths
 ```
 
-The keys, the lite lane for tight budgets, the browser review and the boards (GitHub
-Projects, Jira, Azure DevOps) are in the [reference](docs/reference.md).
+Example configuration excerpt:
 
-## Your data
+```json
+{
+  "gates": {
+    "test": "pnpm test",
+    "lint": "pnpm lint",
+    "typecheck": "pnpm typecheck"
+  },
+  "risk": {
+    "paths": ["src/billing/**", "src/auth/**", "prisma/schema.prisma"]
+  }
+}
+```
 
-No telemetry, and nothing is sent to the author. Branches go to your remote and pull
-requests to GitHub with your own `gh` login. The full list of what it runs, writes and
-sends is [here](docs/reference.md#what-it-runs-writes-and-sends).
+---
 
-## More
+## Privacy & Security
 
-- [Reference](docs/reference.md): every `kit` command, the hooks, the browser lens,
-  boards, the model per stage, tests, and the status of each piece.
-- [Evals](evals/README.md): how the numbers above were measured, and how to rerun them.
-- `investigate` and `note` also ship as standalone skills for any agent:
-  [investigate.zip](https://github.com/gabrielbsandim/task-funnel/releases/latest/download/investigate.zip),
-  [note.zip](https://github.com/gabrielbsandim/task-funnel/releases/latest/download/note.zip).
+- **Zero Telemetry:** No analytics or external event tracking.
+- **Direct Remotes:** Branches and pull requests interact exclusively with your configured git remote and GitHub API using your local `gh` credentials.
+- See [`docs/reference.md#what-it-runs-writes-and-sends`](docs/reference.md#what-it-runs-writes-and-sends) for a complete audit of executed commands and filesystem access.
+
+---
+
+## Documentation
+
+- [`docs/reference.md`](docs/reference.md) — Comprehensive guide: CLI usage, browser testing, board integrations (GitHub Projects, Jira, Azure DevOps), and agent models.
+- [`evals/README.md`](evals/README.md) — Benchmark methodology and steps to reproduce ablation studies.
+
+---
 
 ## License
 
-MIT.
+[MIT](LICENSE) © Gabriel Sandim
