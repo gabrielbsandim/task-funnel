@@ -1,6 +1,6 @@
 # task-funnel
 
-[![Version](https://img.shields.io/badge/Version-v0.19.0-blue.svg)](https://github.com/gabrielbsandim/task-funnel/releases)
+[![Version](https://img.shields.io/badge/Version-v0.20.0-blue.svg)](https://github.com/gabrielbsandim/task-funnel/releases)
 [![Platform](https://img.shields.io/badge/Supported%20By-Claude%20Code%20%7C%20Antigravity-6B46C1.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
