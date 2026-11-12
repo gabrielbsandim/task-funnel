@@ -17,7 +17,8 @@ the miss:
 
   * prose, config and data files. A markdown note has no command that proves it.
   * anything under /tmp or a scratchpad directory, which is where throwaway
-    scripts live.
+    scripts live, or under the work-in-progress root (CLAUDE_WIP_ROOT, default
+    ~/.local/state/wip), which holds notes and helpers that outlive the session.
   * subagent transcripts, which reach their own SubagentStop.
   * a turn with no edit at all, which is most of them.
 
@@ -46,6 +47,8 @@ BASH_WRITE = re.compile(
 # A heredoc body is data, not commands. Stripping it first is what makes it safe to
 # ask whether anything runs after the write, since a body is full of semicolons.
 HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?\n.*?\n\1\s*$", re.S | re.M)
+WIP_ROOT = os.path.join(
+    os.environ.get("CLAUDE_WIP_ROOT") or os.path.expanduser("~/.local/state/wip"), "")
 # How much of the transcript tail to read. A turn longer than this fails open.
 TAIL = 4 * 1024 * 1024
 
@@ -55,6 +58,8 @@ def is_code(path):
         return False
     path = str(path)
     if path.startswith("/tmp/") or "/scratchpad/" in path or "/.git/" in path:
+        return False
+    if path.startswith(WIP_ROOT):
         return False
     if os.path.splitext(path)[1].lower() in CODE:
         return True

@@ -130,7 +130,8 @@ corrupt each other's reads (`evidence.md` &middot; *One browser, one tab*).
   value in `browser.auth`, and the agent cannot read a secret the dispatch did not
   already hand it.
 
-- **Its return is checked before it is believed.** Save it to a file and run
+- **Its return is checked before it is believed.** Save it to a file (under
+  `$CLAUDE_WIP` when that is set, as for every spec, brief and finding) and run
   `kit screens --check <file>`: every screenshot and snapshot it cites must be on
   disk and be what its name says. A `MISSING` artifact makes what rests on it NOT
   PROVEN, and a PROVEN that cites nothing is NOT PROVEN.
