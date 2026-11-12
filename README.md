@@ -155,8 +155,8 @@ Example configuration excerpt:
 
 ## Documentation
 
-- [`docs/reference.md`](docs/reference.md) — Comprehensive guide: CLI usage, browser testing, board integrations (GitHub Projects, Jira, Azure DevOps), and agent models.
-- [`evals/README.md`](evals/README.md) — Benchmark methodology and steps to reproduce ablation studies.
+- [`docs/reference.md`](docs/reference.md): Comprehensive guide: CLI usage, browser testing, board integrations (GitHub Projects, Jira, Azure DevOps), and agent models.
+- [`evals/README.md`](evals/README.md): Benchmark methodology and steps to reproduce ablation studies.
 
 ---
 
