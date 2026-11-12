@@ -14,7 +14,8 @@ compaction*).
 3. Open the pull request exactly as the pipeline document says: base, draft state and
    issue reference are its decisions. Fill the repo's template honestly.
 
-   **The body has a budget, and it is checked.** Write it to a file and run
+   **The body has a budget, and it is checked.** Write it to a file, under
+   `$CLAUDE_WIP` when that is set so a closed session does not take it along, and run
    `kit pr-body <file>` before `gh pr create`: at most **2000 characters of prose** and
    **600 per section**, not counting the template, tables, checkboxes or fenced blocks.
    Cut, do not relocate (`evidence.md` &middot; *A body that competes with the diff*).

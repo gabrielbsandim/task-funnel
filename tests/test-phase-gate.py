@@ -98,6 +98,12 @@ check("prose only",
       run([user(), write("docs/notes.md")]), QUIET)
 check("a scratchpad script is not the deliverable",
       run([user(), write("/tmp/scratch/probe.py")]), QUIET)
+check("a work-in-progress helper is not the deliverable",
+      run([user(), write(os.path.expanduser("~/.local/state/wip/repo/topic/probe.py"))]), QUIET)
+check("the work-in-progress root follows CLAUDE_WIP_ROOT",
+      run([user(), write("/srv/wip/repo/topic/probe.py")], env={"CLAUDE_WIP_ROOT": "/srv/wip"}), QUIET)
+check("a sibling of the work-in-progress root is still source",
+      run([user(), write("/srv/wip-other/probe.py")], env={"CLAUDE_WIP_ROOT": "/srv/wip"}), BLOCK)
 check("no edit at all",
       run([user(), bash("git status")]), QUIET)
 check("the edit belongs to the previous turn",
