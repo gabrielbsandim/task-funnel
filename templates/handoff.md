@@ -1,4 +1,4 @@
-# Handoff: <topic>
+# Handoff: TOPIC
 
 Only for work another session has to finish. Save it as `handoff.md` in the topic
 folder under `$CLAUDE_WIP`, next to the spec or plan it continues.
