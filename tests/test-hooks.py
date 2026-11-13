@@ -357,6 +357,13 @@ registered = sorted(
     if name.endswith(".py") and "sys.stdin" in open(os.path.join(hooks_dir, name)).read()
 )
 quiet_env = {k: v for k, v in os.environ.items() if not k.startswith("KIT_")}
+sandbox = tempfile.mkdtemp()
+quiet_env.update({
+    "KIT_FRESHNESS_INTERVAL": "0",
+    "KIT_FRESHNESS_UPDATE_CMD": "true",
+    "KIT_FRESHNESS_BIN_DIR": sandbox,
+    "CLAUDE_CONFIG_DIR": sandbox,
+})
 for hook in registered:
     for raw in ("null", "[]", '"text"', "1"):
         proc = subprocess.run(
