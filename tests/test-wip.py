@@ -85,11 +85,16 @@ try:
     put(os.path.join(wip, "shop", "one-live-file", "old.md"), mtime_days=30)
     put(os.path.join(wip, "shop", "one-live-file", "new.md"), mtime_days=2)
     put(os.path.join(wip, "gone", "x", "f.md"), mtime_days=20)
+    put(os.path.join(wip, "shop", "paused", "handoff.md"), mtime_days=1)
 
     env_file = os.path.join(base, "env")
     out, err, rc = fire(wip, repo, env_file=env_file)
     text = said(out)
     check("exits 0", rc == 0, err)
+    check("a handoff is named as context, not proof", "context, not proof" in text, text)
+    template = next((w.rstrip(".") for w in text.split() if w.endswith("handoff.md.")), "")
+    check("the handoff template it names exists", os.path.isfile(template), template)
+    check("a topic holding a handoff is marked", "paused/ (1 files" in text and "has handoff.md)" in text, text)
     check("a topic untouched past the TTL is deleted",
           not os.path.exists(os.path.join(wip, "shop", "stale")))
     check("a topic read inside the TTL is kept, whatever its mtime",

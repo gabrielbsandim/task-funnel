@@ -34,6 +34,8 @@ import sys
 import time
 
 LISTED = 15
+HANDOFF_TEMPLATE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "templates", "handoff.md")
 
 
 def ttl_seconds():
@@ -102,10 +104,11 @@ def topics_text(folder, now):
     rows = []
     for topic in subdirs(folder):
         changed, count = last_change(topic)
-        rows.append((changed, count, os.path.basename(topic)))
+        marked = ", has handoff.md" if os.path.isfile(os.path.join(topic, "handoff.md")) else ""
+        rows.append((changed, count, os.path.basename(topic), marked))
     rows.sort(reverse=True)
-    return [f"- {name}/ ({count} files, last change {int((now - changed) // 3600)}h ago)"
-            for changed, count, name in rows[:LISTED]]
+    return [f"- {name}/ ({count} files, last change {int((now - changed) // 3600)}h ago{marked})"
+            for changed, count, name, marked in rows[:LISTED]]
 
 
 def main():
@@ -134,6 +137,7 @@ def main():
         f"Work-in-progress folder for this repository: {folder} (also $CLAUDE_WIP in Bash).",
         f"It survives the session and a reboot; a topic folder in it is deleted {days:g} days after its last read or write.",
         f"Anything worth more than this turn (spec, plan, brief, pull request body, ledger, findings, handoff, generated data) goes in {folder}/<topic>/, never in the scratchpad or /tmp, which are for throwaway files only.",
+        f"A handoff from an earlier session, here or anywhere else, is context, not proof: check the files, git state, gates and live resources it names before acting on its claims. Write one from {HANDOFF_TEMPLATE}.",
     ]
     listed = topics_text(folder, now)
     if listed:
