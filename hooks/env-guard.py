@@ -178,6 +178,8 @@ def main() -> int:
         payload = json.load(sys.stdin)
     except Exception:
         return 0
+    if not isinstance(payload, dict):
+        return 0
     if "hook_event_name" not in payload and "tool_name" not in payload:
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
         import host
