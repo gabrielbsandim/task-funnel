@@ -347,6 +347,25 @@ with tempfile.TemporaryDirectory() as tmp:
     ]:
         check(f"pr-body-gate: {name}", run("pr-body-gate.py", payload), want)
 
+# ------------------------------------------------------- non-object payloads
+# Valid JSON that is not an object is still not an event. Every hook that reads
+# stdin, whether hooks.json or kit-hook.sh runs it, must treat it like unparseable
+# stdin: exit 0 and say nothing, never a traceback.
+hooks_dir = os.path.join(ROOT, "hooks")
+registered = sorted(
+    name for name in os.listdir(hooks_dir)
+    if name.endswith(".py") and "sys.stdin" in open(os.path.join(hooks_dir, name)).read()
+)
+quiet_env = {k: v for k, v in os.environ.items() if not k.startswith("KIT_")}
+for hook in registered:
+    for raw in ("null", "[]", '"text"', "1"):
+        proc = subprocess.run(
+            [sys.executable, os.path.join(ROOT, "hooks", hook)],
+            input=raw, capture_output=True, text=True, env=quiet_env,
+        )
+        got = proc.returncode if not proc.stderr else f"{proc.returncode}+stderr"
+        check(f"{hook}: a {raw} payload fails open silently", got, PASS)
+
 print()
 if failures:
     print(f"{len(failures)} falha(s): {', '.join(failures)}")
