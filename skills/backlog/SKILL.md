@@ -79,6 +79,17 @@ Two things override any grouping: a dependency the issues state themselves, and
 size. A combined pull request that no longer fits one review is worse than two, and
 the funnel's own sizing rule applies here unchanged.
 
+### Which of them can run at once
+
+The groups that stay separate pull requests are scheduled too. Each one names its
+**Files** (the paths it will change, from the issues and a grep, never a guess), its
+**Resources** (a port, a test database, the shared browser, a gate marked
+`exclusive`) and what it **Depends on** (the groups whose merge it needs). Two groups
+share a wave only when their files do not intersect, their resources do not collide
+and neither depends on the other; anything else waits for a later wave. Each group
+is still one task, one worktree and one branch: the worktree is what keeps two
+sessions from racing on a commit, so no session commits for another.
+
 ## What to write
 
 One document, in the language of the conversation, with a section per proposal:
@@ -88,10 +99,12 @@ One document, in the language of the conversation, with a section per proposal:
 | Proposal | adopt, absorb, group, split, close, or leave alone |
 | Issues | the numbers, and which one survives |
 | Evidence | the shared files, the commit that already did it, the dependency |
+| Wave | for a group that stays separate: its wave, Files, Resources, Depends on |
 | Cost of doing nothing | what the next person misreads if this stays as it is |
 
 End with the counts: open before, open after if every proposal is accepted, orphans
-before and after, and the deepest level of the tree. Those four numbers are what
+before and after, the deepest level of the tree, and how many waves the separate
+groups need. Those five numbers are what
 tell the user whether the board got more readable, and they are the only claim here
 that is not a judgement.
 
