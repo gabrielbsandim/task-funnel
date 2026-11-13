@@ -151,6 +151,8 @@ def main():
         payload = json.loads(sys.stdin.read() or "{}")
     except ValueError:
         payload = {}
+    if not isinstance(payload, dict):
+        payload = {}
     # clear and compact do not restart the process, so nothing it loaded can have
     # changed and there is nothing to report.
     if payload.get("source") not in (None, "startup", "resume"):
