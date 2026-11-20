@@ -10,7 +10,8 @@ final answer contains a prompt (or brief) that does all of these:
   parsing it depends on (`parseBRL`), by path;
 - states acceptance criteria that can be checked, including what happens at exactly
   R$ 50.000 (the boundary) and that the second approver is a different person from the
-  first, and names a test or command that would show them;
+  first, and names a test or command that would show them; a test or command the
+  repository does not have yet is said to be new, never cited as if it existed;
 - adds no requirement the user did not ask for (a notification, an audit log, a new
   screen, a permission model) except as an explicit question or option for the user;
 - asks the user to approve or adjust it before anything runs.

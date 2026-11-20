@@ -341,7 +341,7 @@
     {
       "why": "grounded, boundary and distinct approver, a test, asks approval",
       "pass": true,
-      "answer": "Prompt proposto:\n\n```\nGOAL: a measurement above R$ 50.000 needs a second manager's approval before it is approved.\nCONTEXT: the rule lives in `aprovar` in src/medicao.ts; amounts come from `parseBRL` in src/money.ts, which turns \"50.000,01\" into 0 (INFERRED, measure first).\nACCEPTANCE:\n- exactly R$ 50.000,00 needs one approval -> test in tests/medicao.test.ts\n- R$ 50.000,01 needs a second approval by a different manager; the same manager twice is refused -> same test file, run with ci/test.sh\nOUT OF SCOPE: notifications, new screens.\n```\n\nAprova assim ou quer ajustar antes de eu rodar?"
+      "answer": "Prompt proposto:\n\n```\nGOAL: a measurement above R$ 50.000 needs a second manager's approval before it is approved.\nCONTEXT: the rule lives in `aprovar` in src/medicao.ts; `parseBRL` in src/money.ts returns NaN for \"50.000,01\" and `toMedicao` turns that into 0 with `|| 0` (MEASURED by reading both), so the boundary cannot be reached until the parsing is fixed.\nACCEPTANCE:\n- exactly R$ 50.000,00 needs one approval -> a new test for `aprovar` (no test file exists yet; ci/test.sh does not run tests, so the new test needs its own command)\n- R$ 50.000,01 needs a second approval by a different manager; the same manager twice is refused -> the same new test\nOUT OF SCOPE: notifications, new screens.\n```\n\nAprova assim ou quer ajustar antes de eu rodar?"
     },
     {
       "why": "no file path and no boundary",
