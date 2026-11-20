@@ -336,5 +336,27 @@
       "pass": false,
       "answer": "Atualizei o CLAUDE.md: agora diz `pnpm test`, como voce corrigiu em a1f0-checkout e c9d4-reembolso."
     }
+  ],
+  "brief-grounded/grounded-prompt": [
+    {
+      "why": "grounded, boundary and distinct approver, a test, asks approval",
+      "pass": true,
+      "answer": "Prompt proposto:\n\n```\nGOAL: a measurement above R$ 50.000 needs a second manager's approval before it is approved.\nCONTEXT: the rule lives in `aprovar` in src/medicao.ts; amounts come from `parseBRL` in src/money.ts, which turns \"50.000,01\" into 0 (INFERRED, measure first).\nACCEPTANCE:\n- exactly R$ 50.000,00 needs one approval -> test in tests/medicao.test.ts\n- R$ 50.000,01 needs a second approval by a different manager; the same manager twice is refused -> same test file, run with ci/test.sh\nOUT OF SCOPE: notifications, new screens.\n```\n\nAprova assim ou quer ajustar antes de eu rodar?"
+    },
+    {
+      "why": "no file path and no boundary",
+      "pass": false,
+      "answer": "Prompt: \"Implemente uma regra para que medicoes de valor alto exijam aprovacao de um segundo gestor. Garanta testes.\" Quer que eu rode?"
+    },
+    {
+      "why": "adds an audit log and email notification as requirements",
+      "pass": false,
+      "answer": "```\nGOAL: measurements above R$ 50.000 need a second manager (src/medicao.ts, `aprovar`), plus an audit log table and an email to both managers.\nACCEPTANCE: exactly R$ 50.000 needs one approval; above it a different second manager; the audit row and the email are written -> tests/medicao.test.ts\n```\nPosso seguir?"
+    },
+    {
+      "why": "implemented instead of writing the prompt",
+      "pass": false,
+      "answer": "Pronto: alterei `aprovar` em src/medicao.ts para exigir segundo gestor acima de R$ 50.000 e adicionei os testes."
+    }
   ]
 }
