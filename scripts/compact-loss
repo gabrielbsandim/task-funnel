@@ -1,0 +1,151 @@
+#!/usr/bin/env python3
+"""How many of the user's long messages a compaction summary kept whole.
+
+    kit compact-loss [--min N] [--exclude TEXT]... [PATH...]
+
+PATH is a transcript `.jsonl` or a directory searched for them, by default
+`~/.claude/projects`. Each user message of at least N characters (default 300)
+written before a compaction is looked up in the summary that follows it, with
+whitespace collapsed and case folded: whole, cut (its first 200 characters are
+there, the rest is not) or missing. `--exclude` skips every transcript whose path
+contains the text, so one employer's sessions can stay out of a count.
+
+Measured on 2026-11-20 over 934 compactions on one machine, before the PreCompact
+hook existed: of 137 such messages, 91 whole, 10 cut, 36 missing. Those are the
+messages that carry a task's constraints, and the summary is all that survives of
+them.
+
+Also imported by hooks/compact-verbatim.py, which uses `user_messages`.
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+
+WRAPPERS = (
+    "<command-name>", "<command-message>", "<command-args>", "<local-command-stdout>",
+    "<local-command-stderr>", "<local-command-caveat>", "<system-reminder>",
+    "<bash-input>", "<bash-stdout>", "<bash-stderr>", "<task-notification>",
+    "<user-prompt-submit-hook>", "[Request interrupted",
+)
+
+
+def _text(content):
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts = []
+    for block in content:
+        if not isinstance(block, dict) or block.get("type") == "tool_result":
+            return ""
+        if block.get("type") == "text" and isinstance(block.get("text"), str):
+            if not block["text"].lstrip().startswith(WRAPPERS):
+                parts.append(block["text"])
+    return "\n".join(parts)
+
+
+def entries(path):
+    try:
+        handle = open(path, encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    with handle:
+        for line in handle:
+            try:
+                row = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(row, dict):
+                yield row
+
+
+def classify(row):
+    """('summary', text), ('user', text) for a message the user typed, or None."""
+    if row.get("type") != "user" or row.get("isSidechain"):
+        return None
+    message = row.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if row.get("isCompactSummary"):
+        return "summary", _text(content)
+    if row.get("isMeta") or "toolUseResult" in row:
+        return None
+    text = _text(content).strip()
+    if not text or text.startswith(WRAPPERS):
+        return None
+    return "user", text
+
+
+def user_messages(path):
+    """The messages the user typed since the newest compaction summary, oldest first."""
+    found = []
+    for row in entries(path):
+        kind = classify(row)
+        if kind is None:
+            continue
+        if kind[0] == "summary":
+            found = []
+            continue
+        found.append(kind[1])
+    return found
+
+
+def norm(text):
+    return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+def measure(paths, minimum):
+    counts = {"compactions": 0, "whole": 0, "cut": 0, "missing": 0}
+    for path in paths:
+        pending = []
+        for row in entries(path):
+            kind = classify(row)
+            if kind is None:
+                continue
+            if kind[0] == "user":
+                if len(kind[1]) >= minimum:
+                    pending.append(norm(kind[1]))
+                continue
+            counts["compactions"] += 1
+            summary = norm(kind[1])
+            for message in pending:
+                if message in summary:
+                    counts["whole"] += 1
+                elif message[:200] in summary:
+                    counts["cut"] += 1
+                else:
+                    counts["missing"] += 1
+            pending = []
+    return counts
+
+
+def transcripts(targets, exclude):
+    found = []
+    for target in targets:
+        if os.path.isdir(target):
+            found.extend(glob.glob(os.path.join(target, "**", "*.jsonl"), recursive=True))
+        elif os.path.isfile(target):
+            found.append(target)
+    return sorted(p for p in set(found) if not any(e in p for e in exclude))
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog="kit compact-loss")
+    parser.add_argument("paths", nargs="*")
+    parser.add_argument("--min", type=int, default=300)
+    parser.add_argument("--exclude", action="append", default=[])
+    args = parser.parse_args(argv)
+    config = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    paths = transcripts(args.paths or [os.path.join(config, "projects")], args.exclude)
+    c = measure(paths, args.min)
+    total = c["whole"] + c["cut"] + c["missing"]
+    print(f"transcripts {len(paths)}, compactions {c['compactions']}")
+    print(f"user messages of {args.min}+ chars before a compaction: {total}")
+    print(f"  whole {c['whole']}, cut {c['cut']}, missing {c['missing']}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
