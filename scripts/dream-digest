@@ -1,0 +1,169 @@
+#!/usr/bin/env python3
+"""A bounded digest of one project's recent sessions, for /dream to read.
+
+    kit dream-digest [--project DIR | --dir FOLDER] [--sessions N] [--skip-newest] [--max-chars N]
+
+Reads the newest N main-session transcripts (default 20) under
+`<config>/projects/<slug>/`, where the slug is DIR (default the working
+directory) with every character outside [A-Za-z0-9] turned into `-`, the way
+Claude Code names that folder. Subagent transcripts are not read. Only that one
+folder is read, so a digest of one repository never carries another's sessions.
+`--dir` reads a folder of transcripts directly instead, such as a copy of one.
+
+Per session: its id, its first and last timestamp, how many compactions it went
+through, the messages the user typed (each cut at 500 characters, at most 4000 per
+session), and the tool calls that came back as errors, grouped by tool and first
+line. Then, across sessions, every error signature seen in two or more of them,
+with how many. Prevalence is counted here and not left to the reader, because a
+reader shown twenty sessions will call a pattern whatever it remembers best.
+
+`--skip-newest` leaves out the most recently written transcript, which is the
+session running the digest. The output stops at `--max-chars` (default 60000)
+and says so.
+"""
+import argparse
+import glob
+import importlib.machinery
+import importlib.util
+import json
+import os
+import re
+import sys
+from collections import Counter, defaultdict
+
+MESSAGE_CHARS = 500
+SESSION_CHARS = 4000
+ERROR_CHARS = 160
+
+
+def load_compact_loss():
+    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "compact-loss")
+    loader = importlib.machinery.SourceFileLoader("kit_compact_loss", path)
+    spec = importlib.util.spec_from_loader("kit_compact_loss", loader)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def slug(path):
+    return re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(path))
+
+
+def first_line(text):
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not re.match(r"^Exit code \d+$", line):
+            return line[:ERROR_CHARS]
+    return text.strip()[:ERROR_CHARS]
+
+
+def signature(tool, line):
+    shape = re.sub(r"[0-9a-f]{8,}", "<hex>", line)
+    shape = re.sub(r"\d+", "N", shape)
+    return f"{tool}: {shape}"
+
+
+def result_text(block):
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(b.get("text", "") for b in content if isinstance(b, dict))
+    return ""
+
+
+def digest_session(path, cl):
+    tools, errors, messages = {}, Counter(), []
+    first = last = None
+    compactions = 0
+    for row in cl.entries(path):
+        stamp = row.get("timestamp")
+        if isinstance(stamp, str):
+            first = first or stamp
+            last = stamp
+        if row.get("type") == "system" and row.get("subtype") == "compact_boundary":
+            compactions += 1
+        message = row.get("message") if isinstance(row.get("message"), dict) else {}
+        content = message.get("content")
+        if row.get("type") == "assistant" and isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "tool_use":
+                    tools[block.get("id")] = block.get("name") or "?"
+            continue
+        kind = cl.classify(row)
+        if kind and kind[0] == "user":
+            messages.append(kind[1])
+            continue
+        if row.get("type") != "user" or not isinstance(content, list):
+            continue
+        for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_result" and block.get("is_error"):
+                tool = tools.get(block.get("tool_use_id"), "?")
+                errors[(tool, first_line(result_text(block)))] += 1
+    return {"id": os.path.basename(path)[:-6], "first": first, "last": last,
+            "compactions": compactions, "messages": messages, "errors": errors}
+
+
+def render_session(s):
+    out = [f"## session {s['id']}", f"{s['first'] or '?'} to {s['last'] or '?'}, "
+           f"{len(s['messages'])} user messages, {s['compactions']} compactions", ""]
+    budget = SESSION_CHARS
+    if s["messages"]:
+        out.append("User messages:")
+    for i, text in enumerate(s["messages"], 1):
+        flat = " ".join(text.split())
+        cut = flat if len(flat) <= MESSAGE_CHARS else flat[:MESSAGE_CHARS] + f" [+{len(flat) - MESSAGE_CHARS} chars]"
+        if len(cut) > budget:
+            out.append(f"({len(s['messages']) - i + 1} more messages not shown)")
+            break
+        budget -= len(cut)
+        out.append(f"{i}. {cut}")
+    if s["errors"]:
+        out += ["", "Tool errors:"]
+        out += [f"- {tool} x{n}: {line}" for (tool, line), n in s["errors"].most_common(10)]
+    return "\n".join(out) + "\n"
+
+
+def render(sessions, folder):
+    seen = defaultdict(set)
+    sample = {}
+    for s in sessions:
+        for tool, line in s["errors"]:
+            key = signature(tool, line)
+            seen[key].add(s["id"])
+            sample.setdefault(key, f"{tool}: {line}")
+    shared = sorted(((len(ids), key) for key, ids in seen.items() if len(ids) >= 2), reverse=True)
+    head = [f"# dream digest: {len(sessions)} sessions from {folder}", ""]
+    head.append("Error signatures in two or more sessions:" if shared else "No error signature repeats across sessions.")
+    head += [f"- {n} of {len(sessions)} sessions: {sample[key]}" for n, key in shared]
+    return "\n".join(head) + "\n\n" + "\n".join(render_session(s) for s in sessions)
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog="kit dream-digest")
+    parser.add_argument("--project", default=os.getcwd())
+    parser.add_argument("--dir")
+    parser.add_argument("--sessions", type=int, default=20)
+    parser.add_argument("--skip-newest", action="store_true")
+    parser.add_argument("--max-chars", type=int, default=60000)
+    args = parser.parse_args(argv)
+    config = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+    folder = args.dir or os.path.join(config, "projects", slug(args.project))
+    paths = sorted(glob.glob(os.path.join(folder, "*.jsonl")), key=os.path.getmtime, reverse=True)
+    if args.skip_newest:
+        paths = paths[1:]
+    if not paths:
+        print(f"no transcripts in {folder}", file=sys.stderr)
+        return 1
+    cl = load_compact_loss()
+    sessions = [digest_session(p, cl) for p in paths[:max(args.sessions, 1)]]
+    sessions.sort(key=lambda s: s["first"] or "")
+    text = render(sessions, folder)
+    if len(text) > args.max_chars:
+        text = text[:args.max_chars] + f"\n[digest cut at {args.max_chars} characters; rerun with fewer --sessions]\n"
+    sys.stdout.write(text)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

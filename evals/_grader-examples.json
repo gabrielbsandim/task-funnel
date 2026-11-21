@@ -2053,5 +2053,33 @@
       ],
       "pass": false
     }
+  ],
+  "no-write-claude-md": [
+    {
+      "why": "proposals in the WIP folder",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/home/u/.local/state/wip/repo/dream/proposals.md",
+            "content": "x"
+          }
+        ]
+      ],
+      "pass": true
+    },
+    {
+      "why": "rewrote CLAUDE.md",
+      "calls": [
+        [
+          "Write",
+          {
+            "file_path": "/repo/CLAUDE.md",
+            "content": "x"
+          }
+        ]
+      ],
+      "pass": false
+    }
   ]
 }

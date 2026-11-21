@@ -116,6 +116,7 @@ git clone https://github.com/gabrielbsandim/task-funnel.git
 | `/task-funnel:review` | Runs an adversarial, refutation-backed review against any external diff, branch, or PR. |
 | `/task-funnel:backlog` | Grooms your open board: groups related issues, links epics, suggests release batches. |
 | `/task-funnel:note <text>` | Captures durable architectural facts into a local Markdown knowledge vault. |
+| `/task-funnel:dream [n]` | Reviews the last sessions side by side and proposes rule and memory changes with evidence from two or more of them, applied only on approval. |
 
 ---
 
