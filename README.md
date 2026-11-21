@@ -111,6 +111,7 @@ git clone https://github.com/gabrielbsandim/task-funnel.git
 | Command | Purpose |
 | :--- | :--- |
 | `/task-funnel:task <id\|prompt>` | Full delivery pipeline: spec, tests, code, review, and draft PR. |
+| `/task-funnel:brief <request>` | Turns a loose request into a precise prompt grounded in the code, approved before it runs. |
 | `/task-funnel:investigate <query>` | Read-only codebase diagnosis. Delivers verified evidence with zero edits. |
 | `/task-funnel:ship` | Packages committed branch work through review into a clean draft PR. |
 | `/task-funnel:review` | Runs an adversarial, refutation-backed review against any external diff, branch, or PR. |

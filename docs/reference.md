@@ -127,6 +127,7 @@ larger than the original commit is not a round, it is the spec having been wrong
 | `funnel-reviewer` | sonnet | flash | direct, risk |
 | `funnel-verifier` | sonnet | flash | direct, risk |
 | `funnel-screen-lens` | inherit | inherit | risk, when a screen moved |
+| `brief-writer` | inherit | inherit | `/brief`, before any lane |
 
 The criterion is **how a stage's mistakes surface**. A test writer's mistake fails
 `kit gate` in front of you, out loud. A reviewer's input is a diff file already
