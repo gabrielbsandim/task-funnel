@@ -16,11 +16,14 @@ Input: how many sessions, default 20. The scope is the repository you are in.
 ## Stage 1 · The digest, from a script
 
 ```
+mkdir -p "$CLAUDE_WIP/dream"
 kit dream-digest --sessions 20 --skip-newest > "$CLAUDE_WIP/dream/digest.md"
 ```
 
-When the user names a folder of transcripts instead, pass it with `--dir`. It reads
-only this repository's transcript folder, counts which tool errors recur in
+`--skip-newest` leaves out this session's own transcript. When the user names a folder
+of transcripts instead, pass it with `--dir` and drop `--skip-newest`: none of those
+files is this session. Without `--dir` it reads only this repository's transcript
+folder, counts which tool errors recur in
 how many sessions, and lists what the user typed in each. Read the digest, not the raw
 transcripts: a `.jsonl` is mostly tool output, and the count of how many sessions share
 a pattern is the script's job, not memory's.

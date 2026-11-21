@@ -19,3 +19,6 @@ te() { printf '{"type":"user","toolUseResult":"e","message":{"role":"user","cont
   u 2026-11-06T09:30:00Z "corrige o arredondamento do frete"; } > sessions/b2c7-frete.jsonl
 { u 2026-11-10T14:00:00Z "cria o endpoint de reembolso"; tu t2; te t2
   u 2026-11-10T14:15:00Z "de novo o npm test... e pnpm test nesse repo, ja falei"; } > sessions/c9d4-reembolso.jsonl
+touch -d 2026-11-03T10:30:00Z sessions/a1f0-checkout.jsonl
+touch -d 2026-11-06T09:40:00Z sessions/b2c7-frete.jsonl
+touch -d 2026-11-10T14:20:00Z sessions/c9d4-reembolso.jsonl
