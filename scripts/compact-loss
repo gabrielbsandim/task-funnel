@@ -11,7 +11,7 @@ there, the rest is not) or missing. `--exclude` skips every transcript whose pat
 contains the text, so one employer's sessions can stay out of a count.
 
 Measured on 2026-11-20 over 934 compactions on one machine, before the PreCompact
-hook existed: of 137 such messages, 91 whole, 10 cut, 36 missing. Those are the
+hook existed: of 145 such messages, 96 whole, 10 cut, 39 missing. Those are the
 messages that carry a task's constraints, and the summary is all that survives of
 them.
 
@@ -64,7 +64,16 @@ def entries(path):
 
 def classify(row):
     """('summary', text), ('user', text) for a message the user typed, or None."""
-    if row.get("type") != "user" or row.get("isSidechain"):
+    if row.get("isSidechain"):
+        return None
+    if row.get("type") == "attachment":
+        # A message typed while the agent is mid-turn is stored as a queued command.
+        queued = row.get("attachment")
+        if not isinstance(queued, dict) or queued.get("type") != "queued_command" or queued.get("commandMode") != "prompt":
+            return None
+        text = _text(queued.get("prompt")).strip()
+        return ("user", text) if text and not text.startswith(WRAPPERS) else None
+    if row.get("type") != "user":
         return None
     message = row.get("message")
     content = message.get("content") if isinstance(message, dict) else None

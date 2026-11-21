@@ -5,8 +5,8 @@ A `PreCompact` hook. Claude Code uses a PreCompact hook's stdout as instructions
 for the summary it is about to write (https://code.claude.com/docs/en/hooks,
 PreCompact). The summary already lists the user's messages, but it shortens the
 long ones, and those are the ones that carry a task's constraints: measured on
-2026-11-20 over 934 compactions on one machine, of 137 user messages of 300 or
-more characters, 91 came back whole, 10 cut and 36 not at all. After a compaction
+2026-11-20 over 934 compactions on one machine, of 145 user messages of 300 or
+more characters, 96 came back whole, 10 cut and 39 not at all. After a compaction
 the summary is the only copy the session has, so a dropped "never touch the
 migration" is gone for the rest of the task. `kit compact-loss` re-measures it.
 

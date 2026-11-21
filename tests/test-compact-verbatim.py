@@ -64,6 +64,7 @@ def compact(path, **extra):
 
 LONG_A = "Keep the migration untouched. " + "a" * 300
 LONG_B = "Use the billing parser for every amount. " + "b" * 300
+LONG_C = "Typed while the agent worked: keep the old endpoint. " + "k" * 300
 OLD = "Before the last compaction: " + "o" * 300
 
 path = transcript([
@@ -77,17 +78,20 @@ path = transcript([
     user("meta " + "m" * 400, isMeta=True),
     user("side " + "s" * 400, isSidechain=True),
     user([{"type": "text", "text": LONG_B}]),
+    {"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": LONG_C}},
+    {"type": "attachment", "attachment": {"type": "queued_command", "prompt": "<task-notification>" + "t" * 400}},
+    {"type": "attachment", "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": "side " + "q" * 400}, "isSidechain": True},
 ], raw_lines=["not json", "[1, 2]"])
 
 out, err, code = fire(compact(path))
 check("1 exits 0 with no stderr", code == 0 and not err, f"{code} {err[:200]}")
-check("2 lists the two long messages since the newest summary", "holds 2 of them" in out, out[:300])
+check("2 lists the long messages since the newest summary, one typed mid-turn", "holds 3 of them" in out and '"Typed while the agent worked' in out, out[:600])
 check("3 names how each begins, in order",
       out.find('"Keep the migration untouched.') < out.find('"Use the billing parser') and
       out.find('"Keep the migration untouched.') != -1, out[:400])
 check("4 leaves out what came before the newest summary", "Before the last compaction" not in out)
 check("5 leaves out tool results, commands, reminders, meta and sidechain",
-      not any(t in out for t in ("xxxx", "cccc", "rrrr", "mmmm", "ssss")), out)
+      not any(t in out for t in ("xxxx", "cccc", "rrrr", "mmmm", "ssss", "tttt", "qqqq")), out)
 check("6 never quotes a long message in full", "a" * 120 not in out)
 
 out, _, _ = fire(compact(path, custom_instructions="focus on the parser"))
