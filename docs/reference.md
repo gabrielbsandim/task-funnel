@@ -266,6 +266,14 @@ Five are registered, each protecting a property the funnel depends on:
   source file in a checkout with a funnel config, on a branch other than its base,
   with no `kit gate` after the edit. A red gate passes: the turn ran it and can
   report what failed. `KIT_GATE_RECEIPT=off` disables it for a session.
+- **`compact-verbatim`** is a `PreCompact` hook. Claude Code reads a PreCompact
+  hook's stdout as instructions for the summary, and this one asks for every user
+  message of 300 or more characters verbatim, listing how each begins. The summary
+  already lists the user's messages but shortens the long ones, which carry the
+  constraints: on 2026-11-20, over 934 compactions on one machine, 96 of 145 came
+  back whole, 10 cut and 39 missing. `kit compact-loss` re-measures that over your
+  own transcripts (`--exclude` keeps a folder out). `KIT_COMPACT_VERBATIM=off`
+  disables it.
 
 Three more ship unregistered, because one is house style, one updates software
 without being asked, and one decides when a turn is allowed to end:

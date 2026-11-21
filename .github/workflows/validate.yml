@@ -152,6 +152,9 @@ jobs:
       - name: The funnel Stop hook asks for kit gate where a funnel lives
         run: python3 tests/test-gate-receipt.py
 
+      - name: The PreCompact hook asks for the user's long messages and nothing else
+        run: python3 tests/test-compact-verbatim.py
+
       - name: kit escapes counts a later fix on the same source file
         run: python3 tests/test-escapes.py
 
