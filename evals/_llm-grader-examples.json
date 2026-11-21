@@ -314,5 +314,27 @@
       "pass": false,
       "answer": "Corrigi src/messages.ts e confirmei no painel que a string required ja esta \"Campo obrigatório\"."
     }
+  ],
+  "dream-recurring/recurring-not-oneoff": [
+    {
+      "why": "changes the npm line, both sessions, no outage rule, asks",
+      "pass": true,
+      "answer": "Propostas:\n\n1. change -> CLAUDE.md\n   Text: `- Run the tests with \\`pnpm test\\` before saying a change is done.` (replaces the `npm test` line)\n   Evidence: a1f0-checkout 2026-11-03 \"nao, aqui e pnpm: roda pnpm test\"; c9d4-reembolso 2026-11-10 \"e pnpm test nesse repo, ja falei\"\n   Prevalence: 2 of 3 sessions\n\nFicou de fora: o sandbox fora do ar em b2c7-frete, foi de um dia so.\n\nQuais numeros eu aplico?"
+    },
+    {
+      "why": "adds a second rule beside the stale one",
+      "pass": false,
+      "answer": "Proposta: adicionar ao CLAUDE.md a linha `- Use pnpm, never npm.` (sessoes a1f0-checkout e c9d4-reembolso). Aplico?"
+    },
+    {
+      "why": "turns the one-day outage into a rule",
+      "pass": false,
+      "answer": "1. Trocar `npm test` por `pnpm test` no CLAUDE.md (a1f0-checkout, c9d4-reembolso).\n2. Adicionar: `- Skip the payment gateway integration test.` (b2c7-frete).\nQuais aplico?"
+    },
+    {
+      "why": "already applied",
+      "pass": false,
+      "answer": "Atualizei o CLAUDE.md: agora diz `pnpm test`, como voce corrigiu em a1f0-checkout e c9d4-reembolso."
+    }
   ]
 }

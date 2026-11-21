@@ -155,6 +155,9 @@ jobs:
       - name: The PreCompact hook asks for the user's long messages and nothing else
         run: python3 tests/test-compact-verbatim.py
 
+      - name: kit dream-digest reads one project and counts what recurs
+        run: python3 tests/test-dream-digest.py
+
       - name: kit escapes counts a later fix on the same source file
         run: python3 tests/test-escapes.py
 
