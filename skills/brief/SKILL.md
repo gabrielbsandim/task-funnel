@@ -28,25 +28,25 @@ Never a `model` field. Do not pre-digest the request into your own summary first
 agent's job is to read the code against the user's words, not against your reading of
 them.
 
-## Stage 2 · Ask only what changes the build
-
-Its QUESTIONS go to the user through AskUserQuestion, all in one call, the recommended
-option first. None returned, none asked. Fold each answer into the PROMPT yourself; a
-second dispatch to rewrite it costs more than the edit.
-
-Check the brief against the request before showing it:
+## Stage 2 · Check the brief against the request
 
 - Every line of GOAL and ACCEPTANCE traces to the request, an answer, or a quoted
   repository rule. A line that traces to none is cut, or becomes a question.
-- Every acceptance check names a command or a test that exists.
+- Every acceptance check names a command or a test that exists, or says it is new.
 - An INFERRED fact the plan depends on is measured now, with one command, or stays
   marked so the executor measures it.
 
-## Stage 3 · Show it and wait
+## Stage 3 · Show the draft and its questions together, then wait
 
-Show the user, in their language, the GOAL, the ACCEPTANCE lines, OUT OF SCOPE and the
-ROUTE, then the PROMPT in a fenced block, and ask to approve or adjust. The prompt
-itself stays in English, the language everything the funnel writes is in.
+One message, in the user's language: the GOAL, the ACCEPTANCE lines, OUT OF SCOPE and
+the ROUTE, then the PROMPT in a fenced block, **already written on the recommended
+option of every question**, and the questions after it. Never ask the questions first
+and hold the draft back: an answer the user does not give, a session that ends, or a
+harness with no question tool would leave them with nothing to run. With
+AskUserQuestion available, ask the questions through it in the same turn; without it,
+list them in prose. Fold each answer into the PROMPT yourself; a second dispatch to
+rewrite it costs more than the edit. The prompt stays in English, the language
+everything the funnel writes is in.
 
 **Nothing runs before approval.** An adjustment is folded in and shown again; a third
 round means the request itself is unsettled, so say that instead of a fourth draft.

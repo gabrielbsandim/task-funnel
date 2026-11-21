@@ -55,7 +55,8 @@ an agent that has read nothing.>
 ```
 
 - **QUESTIONS holds at most four**, each with a recommended option, and only when the
-  answer changes what gets built or how it is checked. A question the code answers is
+  answer changes what gets built or how it is checked. PROMPT is written on the
+  recommended option of each, so it runs as it stands if the user only says yes. A question the code answers is
   not a question: read the code. None is a fine number.
 - **ROUTE is `task`** for anything that changes code in a repository with the task
   funnel, **`investigate`** for a question about why or where, **`edit`** for a change
