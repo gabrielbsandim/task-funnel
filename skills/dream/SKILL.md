@@ -34,16 +34,18 @@ into another employer's vault, or into the personal one from an employer's repos
 
 ## Stage 2 · What is already written
 
-Read, before proposing anything, or the proposals repeat what is already there:
+Run the rule audit first and read its output alongside the files it inspects, or proposals repeat what is already there and miss contradictions:
 
+```
+kit rules-audit > "$CLAUDE_WIP/dream/rules-audit.md"
+```
+
+Read:
+
+- `$CLAUDE_WIP/dream/rules-audit.md` (always-loaded line count against the ~200-line budget where adherence drops, rigid-word overload in root/global rules, and cross-layer contradiction candidates);
 - the repository's `CLAUDE.md` or `AGENTS.md` and the user-level `CLAUDE.md`;
 - this project's auto-memory directory, `MEMORY.md` and the files it points to;
-- `$CLAUDE_WIP/dream/ledger.md`, if it exists: what earlier runs proposed, and what the
-  user rejected and why. A rejected proposal comes back only with new evidence.
-
-Count the instruction lines that load into every session (the CLAUDE.md files and
-their `@` imports, `wc -l`). It is a budget: past roughly 200, adherence drops for every
-rule, the good ones included.
+- `$CLAUDE_WIP/dream/ledger.md`, if it exists: what earlier runs proposed, and what the user rejected and why. A rejected proposal comes back only with new evidence.
 
 ## Stage 3 · Find what recurs
 
@@ -59,6 +61,8 @@ What counts as evidence:
 - **A tool error the digest shows in two or more sessions.** A guard that keeps
   refusing the same command means a rule the agent does not know or does not follow.
 - **A rule or memory a session contradicted**, or that was true and stopped being.
+- **Two written rules that contradict each other** across `CLAUDE.md`, `AGENTS.md`, `MEMORY.md` or skills (flagged by `kit rules-audit`): resolve the contradiction now without waiting for two failing sessions.
+- **Excessive rigid rules (`NEVER`, `ALWAYS`, `MUST`) in always-loaded files** (`CLAUDE.md`, `AGENTS.md`): rigid absolutes stay in skills or become deterministic hooks, while root files state scope, intent and exceptions; propose `change` to soften or `hook` / move to a skill.
 - **A rule nothing exercised** and nothing would miss.
 
 What does not, however vivid: a one-session event, a failure already fixed ("tool X is

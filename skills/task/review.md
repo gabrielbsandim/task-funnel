@@ -51,8 +51,8 @@ reviewer carries it in its own instructions; the dispatch does not restate it.
 
 - **Critical**: data loss, security, money, breaks production.
 - **Important**: the task is not trustworthy until fixed: incorrect or fragile
-  behaviour, a missed requirement, a literal duplicated block of logic, a swallowed
-  error, a test that asserts nothing.
+  behaviour, a missed requirement, a literal duplicated block of logic, a single-use
+  abstraction or reimplemented helper, a swallowed error, a test that asserts nothing.
 
 There is no third grade. "Coverage could be broader", naming and style are not
 reported at all: a Minor that is reported buys a table row and a decision sentence

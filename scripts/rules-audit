@@ -1,0 +1,521 @@
+#!/usr/bin/env python3
+"""Audit instruction layers for line budget, rigid-rule overload, and contradictions.
+
+    kit rules-audit [--project DIR] [--memory-dir DIR] [--no-global]
+                    [--max-lines 200] [--max-rigid 15] [--json] [--strict]
+
+Discovers four instruction layers for a repository:
+  1. root-rules:   CLAUDE.md, AGENTS.md, and local @path imports inside the repo
+  2. global-rules: <CLAUDE_CONFIG_DIR or ~/.claude>/CLAUDE.md
+  3. memory:       <CLAUDE_CONFIG_DIR or ~/.claude>/projects/<slug>/memory/*.md
+  4. repo-skills:  .claude/skills/*/SKILL.md and skills/*/SKILL.md
+
+Measures:
+  - Always-loaded line budget (root-rules + imports + global-rules + MEMORY.md)
+  - Rigid-rule words (never/always/must/forbidden/nunca/sempre/obrigatorio...)
+    outside fenced code blocks and inline code, alerting only on always-loaded
+    root/global files (never on on-demand skills)
+  - Cross-layer contradiction candidates (conflicting quantities with units,
+    competing tools in the same group, opposite polarity on the same target)
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+
+RIGID_RE = re.compile(
+    r"\b(?:never|always|must|forbidden|prohibited|mandatory|"
+    r"nunca|sempre|obrigat[o\u00f3]ri[oa]|proibid[oa]|jamais)\b",
+    re.IGNORECASE,
+)
+
+AT_IMPORT_RE = re.compile(r"(?:^|\s)@([A-Za-z0-9_./-]+\.md)\b")
+FENCE_RE = re.compile(r"^\s*(?:```|~~~)")
+HEADING_RE = re.compile(r"^\s*#{1,6}\s+(.+?)\s*$")
+INLINE_CODE_RE = re.compile(r"`([^`\n]+)`")
+
+UNIT_RE = re.compile(
+    r"\b(\d+(?:[.,]\d+)?)\s*"
+    r"(fps|lufs|db|ms|px|rem|lines?|chars?|characters?|tokens?|seconds?|minutes?)\b",
+    re.IGNORECASE,
+)
+MEDIA_UNITS = {"fps", "lufs", "db"}
+UNIT_NORM = {
+    "line": "lines",
+    "lines": "lines",
+    "char": "chars",
+    "chars": "chars",
+    "character": "chars",
+    "characters": "chars",
+    "token": "tokens",
+    "tokens": "tokens",
+    "second": "seconds",
+    "seconds": "seconds",
+    "minute": "minutes",
+    "minutes": "minutes",
+}
+
+TOOL_GROUPS = (
+    ("package_manager", ("npm", "pnpm", "yarn", "bun")),
+    ("test_runner", ("jest", "vitest")),
+    ("linter", ("eslint", "biome")),
+    ("python_test", ("pytest", "unittest")),
+)
+DIRECTIVE_RE = re.compile(
+    r"\b(?:use|prefer|always|run|usar|sempre|prefira|rode|utilize)\b",
+    re.IGNORECASE,
+)
+NEG_CUE_RE = re.compile(
+    r"\b(?:never|don't|do not|avoid|forbid|prohibit|not|"
+    r"nunca|nao|n\u00e3o|evite|proibid[oa]|jamais|instead of|rather than|em vez de)\b",
+    re.IGNORECASE,
+)
+NEG_POLARITY_RE = re.compile(
+    r"\b(?:never|don't|do not|avoid|forbid|prohibit|"
+    r"nunca|nao|n\u00e3o|evite|proibid[oa]|jamais)\b",
+    re.IGNORECASE,
+)
+POS_POLARITY_RE = re.compile(
+    r"\b(?:always|must|require|mandatory|"
+    r"sempre|obrigat[o\u00f3]ri[oa]|deve)\b",
+    re.IGNORECASE,
+)
+
+STOPWORDS = {
+    "with", "that", "this", "from", "have", "must", "never", "always", "only",
+    "more", "less", "than", "each", "every", "line", "lines", "file", "files",
+    "when", "where", "what", "which", "your", "their", "about", "into", "over",
+    "under", "before", "after", "without", "should", "would", "could", "using",
+    "para", "mais", "menos", "cada", "onde", "usar", "sobre", "como", "sempre",
+    "nunca", "obrigat", "evite", "entre", "todos", "todas", "pelas", "pelos",
+    "video", "audio", "rules", "rule", "regra", "regras", "format", "formato",
+    "code", "path", "paths", "repo", "local", "text", "data", "name", "names",
+    "item", "items", "list", "mode", "step", "steps", "user", "work", "task",
+    "tasks", "change", "changes", "check", "checks", "commit", "commits",
+    "branch", "error", "errors", "status", "value", "values",
+}
+
+
+def slug(path):
+    return re.sub(r"[^A-Za-z0-9]", "-", os.path.abspath(path))
+
+
+def strip_code_lines(text):
+    """Return per-line metadata with fenced code blocks and inline code stripped."""
+    in_fence = False
+    heading = ""
+    rows = []
+    for lineno, raw in enumerate(text.splitlines(), 1):
+        if FENCE_RE.match(raw):
+            in_fence = not in_fence
+            rows.append((lineno, raw, "", heading))
+            continue
+        if in_fence:
+            rows.append((lineno, raw, "", heading))
+            continue
+        hm = HEADING_RE.match(raw)
+        if hm:
+            heading = hm.group(1)
+        backticks = [m.group(1).strip() for m in INLINE_CODE_RE.finditer(raw)]
+        cleaned = INLINE_CODE_RE.sub(" ", raw)
+        rows.append((lineno, raw, cleaned, heading, backticks))
+    # Normalize 4-tuple code lines to 5-tuple
+    out = []
+    for r in rows:
+        if len(r) == 4:
+            out.append((r[0], r[1], r[2], r[3], []))
+        else:
+            out.append(r)
+    return out
+
+
+def resolve_local_import(base_file, ref, project_real):
+    base_dir = os.path.dirname(os.path.abspath(base_file))
+    for candidate in (os.path.join(base_dir, ref), os.path.join(project_real, ref)):
+        real = os.path.realpath(candidate)
+        if (real == project_real or real.startswith(project_real + os.sep)) and os.path.isfile(real):
+            return real
+    return None
+
+
+def discover_layers(project_dir, memory_dir=None, include_global=True):
+    project_real = os.path.realpath(project_dir)
+    config_dir = os.environ.get("CLAUDE_CONFIG_DIR") or os.path.expanduser("~/.claude")
+
+    layers = {
+        "root-rules": [],
+        "global-rules": [],
+        "memory": [],
+        "repo-skills": [],
+    }
+    seen_real = set()
+
+    # 1. root-rules + recursive local @path imports
+    queue = []
+    for name in ("CLAUDE.md", "AGENTS.md"):
+        p = os.path.join(project_real, name)
+        if os.path.isfile(p):
+            queue.append(p)
+    while queue:
+        cur = queue.pop(0)
+        real = os.path.realpath(cur)
+        if real in seen_real:
+            continue
+        seen_real.add(real)
+        layers["root-rules"].append(real)
+        try:
+            content = open(real, encoding="utf-8", errors="replace").read()
+        except OSError:
+            continue
+        for _, _, cleaned, _, _ in strip_code_lines(content):
+            for m in AT_IMPORT_RE.finditer(cleaned):
+                imp = resolve_local_import(real, m.group(1), project_real)
+                if imp and imp not in seen_real:
+                    queue.append(imp)
+
+    # 2. global-rules
+    if include_global:
+        gp = os.path.join(config_dir, "CLAUDE.md")
+        if os.path.isfile(gp):
+            real = os.path.realpath(gp)
+            if real not in seen_real:
+                seen_real.add(real)
+                layers["global-rules"].append(real)
+
+    # 3. memory
+    mem_folder = memory_dir or os.path.join(config_dir, "projects", slug(project_dir), "memory")
+    if os.path.isdir(mem_folder):
+        for p in sorted(glob.glob(os.path.join(mem_folder, "*.md"))):
+            real = os.path.realpath(p)
+            if real not in seen_real:
+                seen_real.add(real)
+                layers["memory"].append(real)
+
+    # 4. repo-skills
+    skill_globs = [
+        os.path.join(project_real, ".claude", "skills", "*", "SKILL.md"),
+        os.path.join(project_real, "skills", "*", "SKILL.md"),
+    ]
+    for pattern in skill_globs:
+        for p in sorted(glob.glob(pattern)):
+            real = os.path.realpath(p)
+            if real not in seen_real:
+                seen_real.add(real)
+                layers["repo-skills"].append(real)
+
+    return layers
+
+
+def display_path(path, project_real):
+    try:
+        rel = os.path.relpath(path, project_real)
+        if not rel.startswith(".."):
+            return rel
+    except ValueError:
+        pass
+    return path
+
+
+def keywords(text):
+    words = re.findall(r"[A-Za-z0-9_\u00c0-\u024f]{4,}", text.lower())
+    return {w for w in words if w not in STOPWORDS and not w.isdigit()}
+
+
+def parse_entries(layers, project_real):
+    entries = []
+    file_stats = {}
+    layer_summary = {}
+
+    for layer, paths in layers.items():
+        total_lines = 0
+        total_rigid = 0
+        rigid_hits = []
+        for path in paths:
+            try:
+                text = open(path, encoding="utf-8", errors="replace").read()
+            except OSError:
+                continue
+            lines = text.splitlines()
+            total_lines += len(lines)
+            label = display_path(path, project_real)
+            file_rigid = 0
+            for lineno, raw, cleaned, heading, backticks in strip_code_lines(text):
+                if not cleaned.strip():
+                    continue
+                matches = RIGID_RE.findall(cleaned)
+                if matches:
+                    file_rigid += len(matches)
+                    total_rigid += len(matches)
+                    rigid_hits.append({
+                        "layer": layer,
+                        "file": label,
+                        "line": lineno,
+                        "words": [m.lower() for m in matches],
+                        "snippet": raw.strip()[:120],
+                    })
+                entries.append({
+                    "layer": layer,
+                    "file": label,
+                    "line": lineno,
+                    "raw": raw.strip(),
+                    "cleaned": cleaned,
+                    "heading": heading,
+                    "backticks": backticks,
+                })
+            file_stats[label] = {
+                "layer": layer,
+                "lines": len(lines),
+                "rigid": file_rigid,
+                "basename": os.path.basename(path),
+            }
+        layer_summary[layer] = {
+            "files": len(paths),
+            "lines": total_lines,
+            "rigid": total_rigid,
+            "hits": rigid_hits,
+        }
+    return entries, file_stats, layer_summary
+
+
+def tool_recommendations(cleaned):
+    if not DIRECTIVE_RE.search(cleaned):
+        return []
+    recs = []
+    for group_name, tools in TOOL_GROUPS:
+        for tool in tools:
+            for m in re.finditer(rf"\b{re.escape(tool)}\b", cleaned, re.IGNORECASE):
+                prefix = cleaned[max(0, m.start() - 28):m.start()]
+                if NEG_CUE_RE.search(prefix):
+                    continue
+                recs.append((group_name, tool.lower()))
+    return recs
+
+
+def find_contradictions(entries):
+    findings = []
+    seen = set()
+
+    # 1. Quantity conflicts with the same unit across layers
+    unit_items = []
+    for e in entries:
+        for m in UNIT_RE.finditer(e["cleaned"]):
+            raw_num, raw_unit = m.group(1), m.group(2).lower()
+            try:
+                val = float(raw_num.replace(",", "."))
+            except ValueError:
+                continue
+            unit = UNIT_NORM.get(raw_unit, raw_unit)
+            ctx_words = keywords(e["cleaned"] + " " + e["heading"])
+            unit_items.append((e, val, raw_num, unit, ctx_words))
+
+    for i in range(len(unit_items)):
+        e1, v1, n1, u1, w1 = unit_items[i]
+        for j in range(i + 1, len(unit_items)):
+            e2, v2, n2, u2, w2 = unit_items[j]
+            if e1["layer"] == e2["layer"] or u1 != u2 or abs(v1 - v2) < 1e-9:
+                continue
+            if u1 not in MEDIA_UNITS and not (w1 & w2):
+                continue
+            key = tuple(sorted([
+                f"{e1['file']}:{e1['line']}:{u1}:{n1}",
+                f"{e2['file']}:{e2['line']}:{u2}:{n2}",
+            ]))
+            if key in seen:
+                continue
+            seen.add(key)
+            findings.append({
+                "kind": "unit-conflict",
+                "summary": f"{n1} {u1} vs {n2} {u2}",
+                "a": f"{e1['file']}:{e1['line']} ({e1['layer']}): {e1['raw'][:100]}",
+                "b": f"{e2['file']}:{e2['line']} ({e2['layer']}): {e2['raw'][:100]}",
+            })
+
+    # 2. Competing tools inside mutually exclusive groups
+    tool_items = []
+    for e in entries:
+        for group_name, tool in tool_recommendations(e["cleaned"]):
+            tool_items.append((e, group_name, tool))
+
+    for i in range(len(tool_items)):
+        e1, g1, t1 = tool_items[i]
+        for j in range(i + 1, len(tool_items)):
+            e2, g2, t2 = tool_items[j]
+            if e1["layer"] == e2["layer"] or g1 != g2 or t1 == t2:
+                continue
+            key = tuple(sorted([
+                f"{e1['file']}:{e1['line']}:{t1}",
+                f"{e2['file']}:{e2['line']}:{t2}",
+            ]))
+            if key in seen:
+                continue
+            seen.add(key)
+            findings.append({
+                "kind": "tool-conflict",
+                "summary": f"{g1}: {t1} vs {t2}",
+                "a": f"{e1['file']}:{e1['line']} ({e1['layer']}): {e1['raw'][:100]}",
+                "b": f"{e2['file']}:{e2['line']} ({e2['layer']}): {e2['raw'][:100]}",
+            })
+
+    # 3. Opposite polarity targeting the same identifier or multi-keyword topic
+    pol_items = []
+    for e in entries:
+        has_neg = bool(NEG_POLARITY_RE.search(e["cleaned"]))
+        has_pos = bool(POS_POLARITY_RE.search(e["cleaned"]))
+        if has_neg == has_pos:
+            continue
+        pol = "negative" if has_neg else "positive"
+        bt = {b.lower() for b in e["backticks"] if len(b) >= 2}
+        kw = {w for w in keywords(e["cleaned"]) if not RIGID_RE.fullmatch(w)}
+        pol_items.append((e, pol, bt, kw))
+
+    for i in range(len(pol_items)):
+        e1, p1, bt1, kw1 = pol_items[i]
+        for j in range(i + 1, len(pol_items)):
+            e2, p2, bt2, kw2 = pol_items[j]
+            if e1["layer"] == e2["layer"] or p1 == p2:
+                continue
+            shared_bt = bt1 & bt2
+            shared_kw = kw1 & kw2
+            if not shared_bt and len(shared_kw) < 2:
+                continue
+            topic = ", ".join(sorted(shared_bt)) if shared_bt else ", ".join(sorted(shared_kw)[:3])
+            key = tuple(sorted([
+                f"{e1['file']}:{e1['line']}:pol",
+                f"{e2['file']}:{e2['line']}:pol",
+            ]))
+            if key in seen:
+                continue
+            seen.add(key)
+            findings.append({
+                "kind": "polarity-conflict",
+                "summary": f"opposite directives around {topic}",
+                "a": f"{e1['file']}:{e1['line']} ({e1['layer']}): {e1['raw'][:100]}",
+                "b": f"{e2['file']}:{e2['line']} ({e2['layer']}): {e2['raw'][:100]}",
+            })
+
+    return findings
+
+
+def audit(project_dir, memory_dir=None, include_global=True, max_lines=200, max_rigid=15):
+    project_real = os.path.realpath(project_dir)
+    layers = discover_layers(project_real, memory_dir=memory_dir, include_global=include_global)
+    entries, file_stats, layer_summary = parse_entries(layers, project_real)
+
+    always_loaded_lines = (
+        layer_summary["root-rules"]["lines"]
+        + layer_summary["global-rules"]["lines"]
+        + sum(
+            st["lines"]
+            for st in file_stats.values()
+            if st["layer"] == "memory" and st["basename"] == "MEMORY.md"
+        )
+    )
+    root_rigid_count = (
+        layer_summary["root-rules"]["rigid"] + layer_summary["global-rules"]["rigid"]
+    )
+    contradictions = find_contradictions(entries)
+
+    alerts = {
+        "lines_over_budget": always_loaded_lines > max_lines,
+        "rigid_over_budget": root_rigid_count > max_rigid,
+        "has_contradictions": len(contradictions) > 0,
+    }
+    return {
+        "project": project_real,
+        "max_lines": max_lines,
+        "max_rigid": max_rigid,
+        "always_loaded_lines": always_loaded_lines,
+        "root_rigid_count": root_rigid_count,
+        "alerts": alerts,
+        "layers": {
+            k: {
+                "files": v["files"],
+                "lines": v["lines"],
+                "rigid": v["rigid"],
+            }
+            for k, v in layer_summary.items()
+        },
+        "root_rigid_hits": (
+            layer_summary["root-rules"]["hits"] + layer_summary["global-rules"]["hits"]
+        ),
+        "contradictions": contradictions,
+    }
+
+
+def render_markdown(report):
+    lines_status = "ALERT" if report["alerts"]["lines_over_budget"] else "ok"
+    rigid_status = "ALERT" if report["alerts"]["rigid_over_budget"] else "ok"
+    lines = [
+        f"# rules-audit: {report['project']}",
+        "",
+        f"- Always-loaded lines: {report['always_loaded_lines']} / {report['max_lines']} ({lines_status})",
+        f"- Rigid words in root/global rules: {report['root_rigid_count']} / {report['max_rigid']} ({rigid_status})",
+        f"- Cross-layer contradiction candidates: {len(report['contradictions'])}",
+        "",
+        "## Layers",
+        "",
+        "| Layer | Files | Lines | Rigid words |",
+        "| --- | ---: | ---: | ---: |",
+    ]
+    for name in ("root-rules", "global-rules", "memory", "repo-skills"):
+        row = report["layers"][name]
+        lines.append(f"| {name} | {row['files']} | {row['lines']} | {row['rigid']} |")
+
+    lines.append("")
+    lines.append("## Rigid words in root/global rules")
+    lines.append("")
+    if report["root_rigid_hits"]:
+        for h in report["root_rigid_hits"][:30]:
+            words = ", ".join(h["words"])
+            lines.append(f"- {h['file']}:{h['line']} [{words}]: {h['snippet']}")
+        if len(report["root_rigid_hits"]) > 30:
+            lines.append(f"- (+{len(report['root_rigid_hits']) - 30} more hits)")
+    else:
+        lines.append("None.")
+
+    lines.append("")
+    lines.append("## Contradiction candidates")
+    lines.append("")
+    if report["contradictions"]:
+        for i, c in enumerate(report["contradictions"], 1):
+            lines.append(f"{i}. [{c['kind']}] {c['summary']}")
+            lines.append(f"   - {c['a']}")
+            lines.append(f"   - {c['b']}")
+    else:
+        lines.append("None.")
+
+    return "\n".join(lines) + "\n"
+
+
+def main(argv):
+    parser = argparse.ArgumentParser(prog="kit rules-audit")
+    parser.add_argument("--project", default=os.getcwd())
+    parser.add_argument("--memory-dir")
+    parser.add_argument("--no-global", action="store_true")
+    parser.add_argument("--max-lines", type=int, default=200)
+    parser.add_argument("--max-rigid", type=int, default=15)
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--strict", action="store_true")
+    args = parser.parse_args(argv)
+
+    report = audit(
+        args.project,
+        memory_dir=args.memory_dir,
+        include_global=not args.no_global,
+        max_lines=args.max_lines,
+        max_rigid=args.max_rigid,
+    )
+    if args.json:
+        sys.stdout.write(json.dumps(report, indent=2) + "\n")
+    else:
+        sys.stdout.write(render_markdown(report))
+
+    if args.strict and any(report["alerts"].values()):
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

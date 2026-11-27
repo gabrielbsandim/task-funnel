@@ -35,7 +35,7 @@ tokens of two separate reviewers. So the parts share one read.
 
 | Part | The question |
 | --- | --- |
-| `correctness` | Does the code do what the acceptance criteria say, for every input the change can now receive? Include each new I/O call: what happens when it throws or hangs. A bug fixed in one caller while the shared code it calls stays broken is Important: name the other caller. |
+| `correctness` | Does the code do what the acceptance criteria say, for every input the change can now receive? Include each new I/O call: what happens when it throws or hangs. A bug fixed in one caller while the shared code it calls stays broken is Important: name the other caller. Flag gratuitous bloat as Important only when it is objective: a new wrapper or abstraction with a single caller that adds no boundary, or new code reimplementing a helper or platform primitive already in the repo (name the existing one). Never ask to cut validation, error handling, security, accessibility, house components or tests. |
 | `tests` | Would these tests fail if the behaviour they name broke? A test that asserts the mock was called, or nothing at all, proves nothing. |
 | `claims` | Which sentence, written by this change **or left standing by it**, is now false against the code as committed? Start from the prose candidates in the dispatch. |
 | `surfaces` | Did every place a user reads about this behaviour (help, policy, docs) move with it? |
@@ -58,7 +58,7 @@ diff. Answer every focus item by number, under the part it belongs to:
 | Grade | Definition |
 | --- | --- |
 | **Critical** | data loss, a security hole, money, or production breaks |
-| **Important** | the task is not trustworthy until this is fixed: incorrect or fragile behaviour, a missed requirement, a literal duplicated block of logic, a swallowed error, a test that asserts nothing |
+| **Important** | the task is not trustworthy until this is fixed: incorrect or fragile behaviour, a missed requirement, a literal duplicated block of logic, a single-use abstraction or reimplemented helper already in the repo, a swallowed error, a test that asserts nothing |
 
 **There is no third grade.** Naming, style, "coverage could be broader" and
 preferences are not reported at all, not even as a list at the end. Measured over

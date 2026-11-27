@@ -13,11 +13,7 @@ what you wrote.
 Input: the task description or issue number after the command. Empty → ask which
 task and stop.
 
-Three files sit next to this one and are **not** loaded with it. `review.md` is stage
-4 in full and `ship.md` is stages 5 and 6, each read when its stage starts. `evidence.md` is the
-measurement behind every rule here that reads as arbitrary; open it when you are about
-to disagree with a rule or adapt the funnel to a repository it was not written
-against, never to run a task.
+Four files sit next to this one and stay unloaded until needed: `screen.md` before writing under `.browser.screenGlobs`, `review.md` at stage 4, `ship.md` at stage 5, and `evidence.md` only when questioning a rule or adapting the funnel.
 
 ## The repo describes itself
 
@@ -39,7 +35,7 @@ because a Bash call keeps no alias. No config: `kit config init`, then `kit conf
 ## Before stage 0: is this skill the one that shipped
 
 ```
-kit version 0.22.0
+kit version 0.23.0
 ```
 
 The literal is the version this file shipped in (`evidence.md` &middot; *Stale kit*).
@@ -183,8 +179,7 @@ Each dispatch names its agent, or it resolves to a general-purpose one without t
 
 Write it yourself in 3 to 5 lines: what, why, the files, the acceptance in one
 sentence a test can check, and a REVIEW FOCUS of the inputs likeliest to break it. For a bug, the acceptance is the failing test that
-reproduces it. A screen adds a SCREEN line: tokens and components reused, the sibling
-screen copied, the states that apply. Show it with the lane announcement and continue.
+reproduces it. A screen reads `screen.md` first and adds a SCREEN line: tokens, house components, sibling screen, states. Show it with the lane announcement and continue.
 
 ### Risk: the premise check
 

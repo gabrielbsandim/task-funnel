@@ -158,6 +158,9 @@ jobs:
       - name: kit dream-digest reads one project and counts what recurs
         run: python3 tests/test-dream-digest.py
 
+      - name: kit rules-audit checks budgets, rigid words, and cross-layer conflicts
+        run: python3 tests/test-rules-audit.py
+
       - name: kit escapes counts a later fix on the same source file
         run: python3 tests/test-escapes.py
 

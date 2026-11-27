@@ -565,7 +565,8 @@ def report(findings, files, detect, as_json):
         print("%s:%d  %s  %s" % (f["file"], f["line"], f["rule"], f["what"]))
     clean = "design ok, %d screen file(s), added lines only" % len(files)
     dirty = ("\n%d design finding(s) in added lines. Fix the line, or silence one rule there with\n"
-             "`design-ignore: <rule> who decided: <evidence>` on it or the line above." % len(findings))
+             "`design-ignore: <rule> who decided: <evidence>` on it or the line above.\n"
+             "Read skills/task/screen.md before editing screens." % len(findings))
     print(dirty if findings else clean)
     if detect:
         body = detect.get("error") or detect.get("output")
