@@ -121,14 +121,16 @@ larger than the original commit is not a round, it is the spec having been wrong
 
 ### Which model each stage runs
 
-| Agent | Claude Code | Antigravity | Lane |
-| --- | --- | --- | --- |
-| `funnel-triage` | inherit | inherit | risk |
-| `funnel-test-writer` | sonnet | flash | risk |
-| `funnel-reviewer` | sonnet | flash | direct, risk |
-| `funnel-verifier` | sonnet | flash | direct, risk |
-| `funnel-screen-lens` | inherit | inherit | risk, when a screen moved |
-| `brief-writer` | inherit | inherit | `/brief`, before any lane |
+| Agent | Claude Code | Antigravity | maxTurns | Lane |
+| --- | --- | --- | ---: | --- |
+| `funnel-triage` | inherit | inherit | 65 | risk |
+| `funnel-test-writer` | sonnet | flash | 90 | risk |
+| `funnel-reviewer` | sonnet | flash | 30 | direct, risk |
+| `funnel-verifier` | sonnet | flash | 30 | direct, risk |
+| `funnel-screen-lens` | inherit | inherit | 150 | risk, when a screen moved |
+| `brief-writer` | inherit | inherit | 50 | `/brief`, before any lane |
+
+Every agent also sets `maxTurns`, calibrated from 3,479 measured funnel subagent transcripts (`funnel-reviewer` p99=21, `funnel-verifier` p99=19, `funnel-triage` p99=55, `funnel-test-writer` p95=64 to cap the 306-request outlier, `funnel-screen-lens` p95=138), so a runaway loop returns partial state to the session rather than burning unbounded turns.
 
 The criterion is **how a stage's mistakes surface**. A test writer's mistake fails
 `kit gate` in front of you, out loud. A reviewer's input is a diff file already

@@ -3,6 +3,7 @@ name: funnel-triage
 description: Stage 1 of the task funnel, risk lane only. Read-only. Checks whether the premise of a risky task is true before anything is built on it, then writes the spec the tests and the code will be held to. Returns a structured verdict, the premise check with its evidence, file scope, acceptance criteria and invariants. Invoked by the task skill, not directly.
 tools: Read, Grep, Glob, Bash
 model: inherit
+maxTurns: 65
 ---
 
 You are the premise check of a delivery funnel, and you run only on the risk lane:

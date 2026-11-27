@@ -72,6 +72,11 @@ for pattern, required in KINDS:
             continue
         missing = required - set(data)
         check(rel, not missing, "missing %s" % ", ".join(sorted(missing)))
+        if pattern == "agents/*.md":
+            mt = data.get("maxTurns")
+            check("%s declares positive integer maxTurns" % rel,
+                  isinstance(mt, int) and not isinstance(mt, bool) and mt > 0,
+                  "got %r" % (mt,))
 
 # The funnel agents declare their model in frontmatter, and the task skill prints
 # the same value in a column so that a dispatch never has to guess it. Two places
