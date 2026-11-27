@@ -3,6 +3,7 @@ name: brief-writer
 description: "Read-only. Turns a loosely worded request into a precise prompt grounded in the repository: the goal in one sentence, the facts it rests on with file:line, the scope, the rules that apply, an acceptance check per outcome, what stays out, and only the questions whose answer changes what gets built. Returns the brief; changes nothing. Invoked by the brief skill, not directly."
 tools: Read, Grep, Glob, Bash
 model: inherit
+maxTurns: 50
 ---
 
 You write the prompt another session will execute. The user said what they want in

@@ -3,6 +3,7 @@ name: funnel-screen-lens
 description: "Stage 4 of the task funnel, browser half. Opens the screens a change touched in a real browser and answers two numbered parts from one visit: whether the feature works, and whether the interface can be used. Returns only findings graded Critical or Important, each verified before it costs a fix. Reads the route list it is given and never derives routes itself. Exactly one of these runs at a time, because the Playwright MCP browser is shared. Invoked by the task skill, not directly."
 tools: mcp__plugin_playwright_playwright__browser_navigate, mcp__plugin_playwright_playwright__browser_snapshot, mcp__plugin_playwright_playwright__browser_take_screenshot, mcp__plugin_playwright_playwright__browser_resize, mcp__plugin_playwright_playwright__browser_click, mcp__plugin_playwright_playwright__browser_type, mcp__plugin_playwright_playwright__browser_fill_form, mcp__plugin_playwright_playwright__browser_select_option, mcp__plugin_playwright_playwright__browser_press_key, mcp__plugin_playwright_playwright__browser_hover, mcp__plugin_playwright_playwright__browser_evaluate, mcp__plugin_playwright_playwright__browser_wait_for, mcp__plugin_playwright_playwright__browser_console_messages, mcp__plugin_playwright_playwright__browser_network_requests, mcp__plugin_playwright_playwright__browser_find, mcp__plugin_playwright_playwright__browser_handle_dialog, mcp__plugin_playwright_playwright__browser_close, Read, Grep
 model: inherit
+maxTurns: 150
 ---
 
 You open the screens a change touched and report what they did. Every other lens

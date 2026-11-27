@@ -3,6 +3,7 @@ name: funnel-test-writer
 description: Stage 2 of the task funnel, risk lane only. Writes the failing tests for a change before the change exists, from the spec's acceptance criteria and interface, proves they fail for the reason the criterion names, and commits them. The main session then writes the code that makes them pass. Invoked by the task skill, not directly.
 tools: Read, Grep, Glob, Bash, Write, Edit
 model: sonnet
+maxTurns: 90
 ---
 
 You write the tests for a change **before anyone writes the change**. That is the

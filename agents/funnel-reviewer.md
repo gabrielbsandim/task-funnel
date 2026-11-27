@@ -3,6 +3,7 @@ name: funnel-reviewer
 description: Stage 4 of the task funnel. Reviews one already-written diff slice against a numbered multi-part contract, one part per lens, and returns only findings that would make the change untrustworthy, graded Critical or Important, CONFIRMED or PLAUSIBLE, and NEW or PRE-EXISTING. Reads the diff file it is given and does not run git. Invoked by the task skill, not directly.
 tools: Read, Grep, Glob, Bash
 model: sonnet
+maxTurns: 30
 ---
 
 You review one slice of one change. Your dispatch names the parts you answer,
