@@ -221,6 +221,31 @@ with tempfile.TemporaryDirectory() as tmp:
         failures.append("opt-in respected")
 
 print()
+print("== agent-guard, through the dispatcher")
+def agent_call(stype="", model="", tool="Agent"):
+    inp = {}
+    if stype:
+        inp["subagent_type"] = stype
+    if model:
+        inp["model"] = model
+    return {"hook_event_name": "PreToolUse", "tool_name": tool, "tool_input": inp}
+
+
+for name, payload, want, env in [
+    ("default subagent without model", agent_call(), BLOCK, None),
+    ("Task general-purpose without model", agent_call("general-purpose", tool="Task"), BLOCK, None),
+    ("general-purpose with inherit", agent_call("general-purpose", "inherit"), BLOCK, None),
+    ("general-purpose with opus", agent_call("general-purpose", "opus"), BLOCK, None),
+    ("general-purpose with sonnet", agent_call("general-purpose", "sonnet"), PASS, None),
+    ("general-purpose with haiku", agent_call("general-purpose", "haiku"), PASS, None),
+    ("Explore without model", agent_call("Explore"), PASS, None),
+    ("funnel-reviewer without model", agent_call("task-funnel:funnel-reviewer"), PASS, None),
+    ("funnel-triage without model", agent_call("task-funnel:funnel-triage"), PASS, None),
+    ("KIT_AGENT_GUARD=off allows flagship", agent_call("general-purpose"), PASS, {"KIT_AGENT_GUARD": "off"}),
+]:
+    equivalent(f"agent-guard: {name}", "agent-guard.py", payload, want, env)
+
+print()
 print("== the plugin's own tests are exempt, and nobody else's")
 
 

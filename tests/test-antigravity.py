@@ -211,6 +211,15 @@ with tempfile.TemporaryDirectory() as tmp:
     )
     check("PR body without lane marker denied when Antigravity read task/SKILL.md", rc == 0 and out.get("decision") == "deny", out)
 
+    for label, sub_args, want_dec in (
+        ("invoke_subagent self without Model denied", {"TypeName": "self", "Role": "Helper", "Prompt": "Do x"}, "deny"),
+        ("invoke_subagent self inherit denied", {"TypeName": "self", "Model": "inherit", "Role": "Helper", "Prompt": "Do x"}, "deny"),
+        ("invoke_subagent self flash allowed", {"TypeName": "self", "Model": "flash", "Role": "Helper", "Prompt": "Do x"}, "allow"),
+        ("invoke_subagent research allowed", {"TypeName": "research", "Role": "Reader", "Prompt": "Find x"}, "allow"),
+    ):
+        rc, out = run_hook("guards.py", agy_pre("invoke_subagent", sub_args, workspace=tmp), "PreToolUse")
+        check(label, rc == 0 and out.get("decision") == want_dec, out)
+
 # ------------------------------------------------------------------ 3. Stop hook on Antigravity transcripts
 print("== 3. Stop hook on Antigravity transcripts")
 SCRATCH = os.path.join(os.path.expanduser("~"), ".cache")
