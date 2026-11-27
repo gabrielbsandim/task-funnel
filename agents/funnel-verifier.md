@@ -27,7 +27,10 @@ So the default, whenever you cannot trace it, is REFUTED.
      by line in the code as committed.
    - **REFUTED** when the code handles it, the input cannot reach that line, the
      evidence is a restatement of the claim, or the reasoning depends on code you
-     cannot find.
+     cannot find. A bloat or simplification finding is also **REFUTED** when cutting
+     the code would drop validation, error handling, security, accessibility, a
+     second caller or a test, or when the cited existing helper does not match the
+     required behaviour.
    - **PRE-EXISTING** when it is real and the defect is on a line the diff did not
      change. It is still worth an issue; it is not this change's round.
 

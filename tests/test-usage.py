@@ -245,5 +245,27 @@ with tempfile.TemporaryDirectory() as cfg:
     check("the agent type names the stage when the prompt does not",
           stages.get("4 reviewer", {}).get("output"), 90)
 
+# Non-funnel subagents with a harness agentType break out of the single `other` bucket.
+with tempfile.TemporaryDirectory() as cfg:
+    project = os.path.join(cfg, "projects", "-tmp-repo")
+    subs = os.path.join(project, SESSION, "subagents")
+    os.makedirs(subs, exist_ok=True)
+    with open(os.path.join(project, SESSION + ".jsonl"), "w") as fh:
+        fh.write(row("r0", "m0", 10) + "\n")
+    for agent_id, atype, out_tokens in (
+        ("agent-c1", "general-purpose", 120),
+        ("agent-c2", "Explore", 30),
+    ):
+        with open(os.path.join(subs, agent_id + ".jsonl"), "w") as fh:
+            fh.write(json.dumps({"type": "user", "message": {"content": "Inspect this module."}}) + "\n")
+            fh.write(row(agent_id + "r", agent_id + "m", out_tokens) + "\n")
+        with open(os.path.join(subs, agent_id + ".meta.json"), "w") as fh:
+            json.dump({"agentType": atype}, fh)
+    stages = run(cfg, "--session", SESSION, "--by-stage")["stages"]
+    check("general-purpose subagent gets its own other bucket",
+          stages.get("other:general-purpose", {}).get("output"), 120)
+    check("Explore subagent gets its own other bucket",
+          stages.get("other:Explore", {}).get("output"), 30)
+
 print("\n%d ok, %d failed" % (PASS, FAIL))
 sys.exit(1 if FAIL else 0)

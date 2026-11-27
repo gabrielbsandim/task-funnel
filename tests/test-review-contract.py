@@ -59,6 +59,13 @@ check("5 the dispatch carries them verbatim", "INVARIANTS, CONSTRAINTS and REVIE
 check("5 the reviewer answers every focus item", "FOCUS <n> not checked" in reviewer and "Silence on a focus item is not an answer" in reviewer)
 check("5 the reviewer flags a fix made in one caller", "fixed in one caller while the shared code" in reviewer)
 
+check("6 the reviewer flags objective bloat without cutting the floor",
+      "single caller that adds no boundary" in reviewer and "Never ask to cut validation" in reviewer)
+check("6 review.md rubric keeps the anti-bloat entry aligned",
+      "single-use abstraction or reimplemented helper" in review)
+check("6 the verifier refutes simplifications that break the floor",
+      "bloat or simplification finding is also **REFUTED**" in verifier)
+
 probes = re.findall(r"```js\n(.*?)```", lens_raw, re.S)
 check("4 the screen lens carries the layout and the legibility probe", len(probes) == 2, f"{len(probes)} js blocks")
 for key in ("lowContrast", "nearTheBar", "overAnImage", "tinyText", "clipped", "skippedHeadings", "brokenImages",

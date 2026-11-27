@@ -193,10 +193,10 @@ def stage_of(path):
                         return name
                 if "claude-kit/review/slice-" in head:
                     return "4 reviewer"
-                return "other"
+                return f"other:{norm_type}" if norm_type else "other"
     except (OSError, ValueError):
         pass
-    return "other"
+    return f"other:{norm_type}" if norm_type else "other"
 
 
 def by_stage(sub_files, since=None, until=None):
@@ -431,11 +431,11 @@ def main(argv):
              len(sub_files)))
     print("subagents are %.1f%% of the tokens" % share)
     if stages:
-        print("\n%-16s %6s %10s %10s" % ("stage", "runs", "US$", "US$/run"))
+        print("\n%-24s %6s %10s %10s" % ("stage", "runs", "US$", "US$/run"))
         for name in sorted(stages, key=lambda k: -stages[k]["cost"]):
             row = stages[name]
             per = row["cost"] / row["runs"] if row["runs"] else 0.0
-            print("%-16s %6d %10.2f %10.2f" % (name, row["runs"], row["cost"], per))
+            print("%-24s %6d %10.2f %10.2f" % (name, row["runs"], row["cost"], per))
     if sessions:
         print("\n%-10s %-9s %6s %8s %10s  %s" % ("day", "session", "agents", "Mtok", "US$", "branch"))
         for row in sessions:
