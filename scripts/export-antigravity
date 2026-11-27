@@ -48,7 +48,7 @@ TOOL_MAP = {
 
 PRE_MATCHER = (
     "run_command|write_file|write_to_file|edit_file|replace_file_content"
-    "|multi_replace_file_content|notebook_edit|call_mcp_tool|mcp_.*_addCommentToJiraIssue"
+    "|multi_replace_file_content|notebook_edit|invoke_subagent|call_mcp_tool|mcp_.*_addCommentToJiraIssue"
 )
 POST_MATCHER = (
     "write_file|write_to_file|edit_file|replace_file_content"

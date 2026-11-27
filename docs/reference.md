@@ -227,7 +227,7 @@ request URL exists. Never done: the funnel does not merge.
 
 ## Hooks
 
-Five are registered, each protecting a property the funnel depends on:
+Seven are registered, each protecting a property the funnel depends on:
 
 - **`env-guard`** blocks any shell command that would print a secret-bearing file
   into the transcript. A permission rule on file reads does not cover `cat`,
@@ -276,6 +276,14 @@ Five are registered, each protecting a property the funnel depends on:
   back whole, 10 cut and 39 missing. `kit compact-loss` re-measures that over your
   own transcripts (`--exclude` keeps a folder out). `KIT_COMPACT_VERBATIM=off`
   disables it.
+- **`agent-guard`** blocks generic `Agent`/`Task` (`general-purpose`, empty type,
+  `self`, `fork`) and Antigravity `invoke_subagent` (`self`) dispatches that inherit
+  the flagship model or name an Opus/Fable/Pro model instead of a smaller model
+  (`sonnet`, `haiku`, `flash`, `flash_lite`). Measured across 338 local dispatches,
+  those generic runs averaged US$ 11.61 each against US$ 0.31 for `funnel-reviewer`
+  and US$ 2.30 for `Explore`. Scoped agents (`Explore`, `Plan`, `research`,
+  `task-funnel:*`) pass unchanged, and `KIT_AGENT_GUARD=off` disables the guard for
+  a session.
 
 Three more ship unregistered, because one is house style, one updates software
 without being asked, and one decides when a turn is allowed to end:

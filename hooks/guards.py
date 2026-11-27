@@ -72,6 +72,9 @@ def pre_tool_use(payload: dict) -> int:
     if tool.endswith("addCommentToJiraIssue"):
         return load("pr-body-gate").check(payload)
 
+    if tool in ("Agent", "Task"):
+        return load("agent-guard").check(payload)
+
     if tool in ("Write", "Edit", "NotebookEdit"):
         # No prefilter: this path compares against what is on disk, so the
         # decision needs the file, not a substring of the payload.

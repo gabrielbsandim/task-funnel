@@ -80,6 +80,13 @@ def normalize_tool(name: str, args: dict, compact_args: bool = False):
         src = args.get("NewSource") or args.get("Content") or args.get("new_source") or ""
         return "NotebookEdit", {"notebook_path": path, "new_source": src, "content": src}
 
+    if name == "invoke_subagent":
+        return "Agent", {
+            "subagent_type": args.get("TypeName") or "",
+            "model": args.get("Model") or "",
+            "prompt": args.get("Prompt") or "",
+        }
+
     if name == "call_mcp_tool":
         server = args.get("ServerName") or "mcp"
         tool = args.get("ToolName") or ""
